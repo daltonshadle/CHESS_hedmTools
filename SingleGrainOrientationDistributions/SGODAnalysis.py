@@ -1,0 +1,743 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Mar 10 08:13:32 2022
+
+@author: djs522
+"""
+
+# *****************************************************************************
+# IMPORTS
+# *****************************************************************************
+
+import sys
+#import os
+
+#import cc3d
+
+import numpy as np
+
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+#import matplotlib
+import matplotlib.cm as cm
+import matplotlib.colors as plt_colors
+#from matplotlib.gridspec import GridSpec
+from mpl_toolkits.mplot3d import Axes3D
+
+from scipy.stats import gaussian_kde
+#from scipy.optimize import nnls
+
+if sys.version_info[0] < 3:
+    # python 2
+    from hexrd.xrd          import rotations  as hexrd_rot
+    from hexrd.xrd          import symmetry   as hexrd_sym
+else:
+    # python 3
+    from hexrd        import rotations  as hexrd_rot
+    from hexrd        import symmetry   as hexrd_sym
+    #import scipy.spatial.transform as scipy_trans
+    #from sklearn.neighbors import KernelDensity
+
+import OrientationTools
+from pyevtk.hl import pointsToVTK
+
+# *****************************************************************************
+# FUNCTION DECLARATION AND IMPLEMENTATION
+# *****************************************************************************
+
+def plot_grain_dsgod(grain_rod, grain_odf=None, reverse_map=False, 
+                     just_faces=False, no_axis=False, cmap=plt.cm.viridis_r,
+                     scatter_size=400, fig=None, ori_ax=None):
+    '''
+    Purpose: plots the discrete single grain orientation distribution (DSGOD) in
+      3D Rodigrues Orientation Space with 2D projected distributions on the 
+      far faces of the plot area
+
+    Parameters
+    ----------
+    grain_rod : n x 3 numpy array
+        Rodrigues Orientation vectors given as the rows of the array
+    grain_odf : n x 1 numpy array
+        The weight associated with each orientation, if None it will default
+        uniform weights
+    reverse_map : bool
+        True = reverse the color mapping of the distributions
+        False = nothing
+    just_faces : bool
+        True = plots just the 2D projected distributions on the far faces
+        False = plots 3D distribution and 2D projected distributions
+    no_axis : bool
+        True = removes the axes lines from the plot
+        False = leaves the axies lines in the plot
+    cmap : matplotlib.pyplot.cm
+        matplotlib color map for the distributions
+    scatter_size : int
+        size of scatter plot points in DSGOD
+    fig : matplotlib.pyplot.figure
+        matplotlib figure object for the DSGOD plot, if None a figure will be
+        generated in the function
+    ori_ax : matplotlib.pyplot.ax
+        matplotlib ax object for the DSGOD plot, if None an axis will be
+        generated in the function
+
+    Returns
+    -------
+    fig : matplotlib.pyplot.figure
+        matplotlib figure object for the DSGOD plot
+    ori_ax : matplotlib.pyplot.ax
+        matplotlib ax object for the DSGOD plot
+        
+    Notes
+    -----
+    TODO: Still some hard-coded variables in this functions, need to replace
+    with options parameter
+    '''
+    
+    if grain_odf is None:
+        grain_odf = np.ones([grain_rod.shape[0]])
+    
+    if reverse_map:
+        grain_odf = -grain_odf
+    
+    # main figure
+    if fig is None:
+        fig = plt.figure(figsize=(12, 12))
+    fig.patch.set_alpha(0)
+    
+    # set up plot area for orientations
+    if ori_ax is None:
+        ori_ax = Axes3D(fig)
+    ori_ax.patch.set_facecolor('white')
+    ori_ax.patch.set_alpha(0.0)
+    ori_ax.w_xaxis.set_pane_color((1.0, 1.0, 1.0, 0.0))
+    ori_ax.w_yaxis.set_pane_color((1.0, 1.0, 1.0, 0.0))
+    ori_ax.w_zaxis.set_pane_color((1.0, 1.0, 1.0, 0.0))
+    
+    # Get the colormap colors
+    my_cmap = cmap(np.arange(cmap.N))
+    # Set alpha
+    alpha_max = 1
+    alpha_min = 0.6 # 0.6
+    my_cmap[:,-1] = np.linspace(alpha_min, alpha_max, cmap.N)
+    if reverse_map:
+        my_cmap[:,-1] = np.linspace(alpha_max, alpha_min, cmap.N)
+    # Create new colormap
+    my_cmap = plt_colors.ListedColormap(my_cmap)
+    
+    # plot rods with odf    
+    if not just_faces:
+        ori_ax.scatter(grain_rod[:, 0], grain_rod[:, 1], grain_rod[:, 2], 
+                       c=grain_odf, cmap=my_cmap, s=scatter_size)
+    
+    # plot 3 histograims for each face
+    for i in range(3):
+        x = i % 3
+        y = (i + 1) % 3
+        z = (i + 2) % 3
+        
+        # estimate 2D histograim with kernel density
+        step = np.abs(grain_rod[:, x].min() - grain_rod[:, x].max())/1.8 #0.1
+        xmin, ymin = grain_rod[:, x].mean(axis=0)-step, grain_rod[:, y].mean(axis=0)-step
+        xmax, ymax = grain_rod[:, x].mean(axis=0)+step, grain_rod[:, y].mean(axis=0)+step
+        n = 75j # default is 50
+        xi, yi = np.mgrid[xmin:xmax:n, ymin:ymax:n]
+        coords = np.vstack([item.ravel() for item in [xi, yi]])
+        kde = gaussian_kde(grain_rod[:, [x,y]].T, weights=grain_odf)
+        density = kde(coords).reshape(xi.shape)
+        density = density / np.sum(density)
+        if reverse_map:
+            density = -density
+        
+        edge1_mesh = xi
+        edge2_mesh = yi
+        
+        # set color mapping
+        vmin = np.median(density)
+        vmax = np.max(density)
+        
+        lim_step = 0.1
+        c_norm = plt_colors.Normalize(vmin=vmin, vmax=vmax)
+        if reverse_map:
+            c_norm = plt_colors.Normalize(vmin=-vmax, vmax=-vmin)
+        
+        scale_map = cm.ScalarMappable(norm=c_norm, cmap=cmap)
+        normalized_h_map = scale_map.to_rgba(density)
+        normalized_h_map[np.abs(density) < vmin, 3] = 0
+        pos_3 = np.min(grain_rod[:, z]) - (lim_step - 1e-3)
+        flat_pos_3 = np.full_like(edge1_mesh, pos_3)
+        
+        # plot surfaces
+        if i == 0:
+            p = ori_ax.plot_surface(edge1_mesh, edge2_mesh, flat_pos_3, facecolors=normalized_h_map, rstride=1, cstride=1, shade=False)
+        elif i == 1:
+            p = ori_ax.plot_surface(flat_pos_3, edge1_mesh, edge2_mesh, facecolors=normalized_h_map, rstride=1, cstride=1, shade=False)
+        else:
+            p = ori_ax.plot_surface(edge2_mesh, flat_pos_3, edge1_mesh, facecolors=normalized_h_map, rstride=1, cstride=1, shade=False)
+           
+    # label axis and show
+    lp = 20
+    ori_ax.set_xlabel('$r_{x}$', rotation=0, labelpad=lp)
+    ori_ax.set_ylabel('$r_{y}$', rotation=0, labelpad=lp)
+    ori_ax.set_zlabel('$r_{z}$', rotation=0, labelpad=lp)
+    ori_ax.xaxis.set_rotate_label(True)
+    ori_ax.yaxis.set_rotate_label(True)
+    ori_ax.zaxis.set_rotate_label(True)
+    
+    # set limits
+    lim_list = [np.min(grain_rod[:, 0]) - lim_step, np.max(grain_rod[:, 0]) + lim_step,
+                np.min(grain_rod[:, 1]) - lim_step, np.max(grain_rod[:, 1]) + lim_step,
+                np.min(grain_rod[:, 2]) - lim_step, np.max(grain_rod[:, 2]) + lim_step]
+    
+    ori_ax.set_xlim3d(lim_list[0], lim_list[1])
+    ori_ax.set_ylim3d(lim_list[2], lim_list[3])
+    ori_ax.set_zlim3d(lim_list[4], lim_list[5])
+    
+    # rotate graph to isometric
+    ori_ax.view_init(25, 45)
+    
+    # set font size
+    plt.rcParams.update({'font.size': 20})
+    
+    if no_axis:
+        ori_ax.grid(True)
+        ori_ax.set_xticklabels([])
+        ori_ax.set_yticklabels([])
+        ori_ax.set_zticklabels([])
+        ori_ax.set_xlabel('', rotation=0, labelpad=lp)
+        ori_ax.set_ylabel('', rotation=0, labelpad=lp)
+        ori_ax.set_zlabel('', rotation=0, labelpad=lp)
+    
+    return [fig, ori_ax]
+
+
+def grain_dsgod_to_vtk(vtk_save_dir, grain_rod, grain_odf=None):
+    '''
+    Purpose: saves the discrete single grain orientation distribution (DSGOD) in
+      .vtk file for visualization in Paraview
+
+    Parameters
+    ----------
+    vtk_save_dir : string
+        Path directory to save .vtk file to
+    grain_rod : n x 3 numpy array
+        Rodrigues Orientation vectors given as the rows of the array
+    grain_odf : n x 1 numpy array
+        The weight associated with each orientation, if None it will default
+        uniform weights
+
+    Returns
+    -------
+    None
+        
+    Notes
+    -----
+    TODO: Still some hard-coded variables in this functions, need to replace
+    with options parameter
+    '''
+    
+    if grain_odf is None:
+        grain_odf = np.ones([grain_rod.shape[0]])
+    
+    pointsToVTK(vtk_save_dir, np.array([grain_rod[:, 0]]), np.array([grain_rod[:, 1]]), np.array([grain_rod[:, 2]]), data = {'dsgod': grain_odf})
+    
+def calc_misorientation_quats(quats, avg_quat=None, disp_stats=False):
+    '''
+    Purpose: calculates the misorientation quaternions between the average 
+        quaternion orientation and a list of quaternion orientations
+
+    Parameters
+    ----------
+    quats : n x 4 numpy array
+        Quaternion orientation vectors given as the rows of the array
+    avg_quat : 1 x 4 numpy array
+        Quaternion avergae orientation vectors given as the row of the array, 
+        if None, the average will be calculated from the given quats
+    disp_stats : bool
+        True = will display stats as misorientation is calculated
+
+    Returns
+    -------
+    mis_quats : n x 4 numpy array
+        Quaternion misorientation vectors given as the rows of the array
+    mis_ang_deg : n x 1 numpy array
+        Array of misorientation angles (degrees) for each orientation compared 
+        to average orientation
+    avg_quat : 1 x 4 numpy array
+        Quaternion avergae orientation vectors given as the row of the array
+        
+    Notes
+    -----
+    TODO: Still some hard-coded variables in this functions, need to replace
+    with options parameter
+    '''
+    if avg_quat is None:
+        avg_quat = hexrd_rot.quatAverageCluster(quats.T, qsym=hexrd_sym.quatOfLaueGroup('Oh')).T
+        avg_quat.shape = [1, 4]
+
+    [mis_ang_rad, mis_quats] = hexrd_rot.misorientation(avg_quat.T, quats.T)
+    mis_ang_deg = np.rad2deg(mis_ang_rad)
+    
+    if disp_stats:
+        print('Avg misorientation: %0.3f' %(np.mean(mis_ang_deg)))
+        print('Max misorientation: %0.3f' %(np.max(mis_ang_deg)))
+    
+    return [mis_quats.T, mis_ang_deg, avg_quat.T]
+
+
+def calc_misorient_moments(grain_mis_quat, grain_odf=None, norm_regularizer=0):
+    '''
+    Purpose: calculates higher order moments of a discrete single grain
+       orientation distribution (DSGOD)
+
+    Parameters
+    ----------
+    grain_mis_quat : n x 4 numpy array
+        Quaternion misorientation vectors given as the rows of the array
+    grain_odf : n x 1 numpy array
+        The weight associated with each orientation, if None it will default
+        uniform weights
+    norm_regularizer : float
+        number to regularize higher order moment calculations (experimental)
+
+    Returns
+    -------
+    norm_sigma : float
+        norm of the sigma (covariance) matrix
+    norm_gamma : float
+        norm of the gamma (skewness) matrix
+    norm_kappa : float
+        norm of the kappa (kurtosis) matrix
+    sigma : 3 x 3 numpy array
+        sigma (covariance) matrix
+    gamma : 3 x 3 x 3 numpy array
+        gamma (skewness) matrix
+    kappa : 3 x 3 x 3 x 3 numpy array
+        kappa (kurtosis) matrix
+        
+    Notes
+    -----
+    TODO: Still some hard-coded variables in this functions, need to replace
+        with options parameter
+    Refer to https://link.springer.com/article/10.1007/s40192-019-00153-4 for 
+        details on DSGOD higher order analysis, we note that Rodrigues 
+        misorientation vectors are used here instead of angle-axis misorientation
+        vectors as described in the paper
+    '''
+    
+    # initialize
+    norm_sigma = norm_gamma = norm_kappa = sigma = gamma = kappa = 0
+    
+    # preprocess
+    grain_mis_rod = OrientationTools.quat2rod(grain_mis_quat)
+    
+    if grain_odf is None:
+        grain_odf = np.ones([grain_mis_rod.shape[0]])
+    
+    # get number of orientations
+    num_ori = grain_odf.size
+    default_num = 37
+    
+    if num_ori < 2:
+        print('WARNING: Number of orientation (%i) is low, no HOM calculations!' %(num_ori))
+        pass
+    else:
+        if num_ori < default_num:
+            print('WARNING: Number of orientation (%i) is low for HOM clculations!' %(num_ori))
+        
+        # convert misorienation quaternions to angle-axis rep (both methods equal)
+        '''
+        grain_mis_quat = grain_mis_quat[:, [1,2,3,0]]
+        grain_mis_angle_axis = scipy_trans.Rotation(grain_mis_quat).as_rotvec()
+        
+        #[grain_mis_angle, grain_mis_vec] = hexrd_rot.angleAxisOfRotMat(hexrd_rot.rotMatOfQuat(grain_mis_quat))
+        #grain_mis_angle_axis = grain_mis_vec.T * grain_mis_angle[:, np.newaxis]
+        '''
+        
+        # compute covariance
+        outer_1 = np.einsum('ij,ik->ijk', grain_mis_rod, grain_mis_rod)
+        sigma = (num_ori/(num_ori - 1)
+            * np.sum(np.einsum('i,ijk->ijk', grain_odf, outer_1), axis=0))
+    
+        # compute sigma norm for later
+        norm_sigma = np.linalg.norm(sigma)
+    
+        # compute skewness
+        outer_2 = np.einsum('ijk,il->ijkl', outer_1, grain_mis_rod)
+        gamma = ((norm_sigma + norm_regularizer)**(-3/2)
+            * np.sum(np.einsum('i,ijkl->ijkl', grain_odf, outer_2), axis=0))
+    
+        # compute gamma norm for later
+        norm_gamma = np.linalg.norm(gamma)
+    
+        # compute kurtosis
+        outer_3 = np.einsum('ijkl,im->ijklm', outer_2, grain_mis_rod)
+        kappa = ((norm_sigma + norm_regularizer)**(-2)
+            * np.sum(np.einsum('i,ijklm->ijklm', grain_odf, outer_3), axis=0))
+    
+        # compute kappa norm for later
+        norm_kappa = np.linalg.norm(kappa)
+
+    return norm_sigma, norm_gamma, norm_kappa, sigma, gamma, kappa
+    
+    
+def animate_dsgods_rod(grain_rod_list, grain_odf_list=None, labels_list=None, 
+                 interval=1000, save_gif_dir=None):
+    '''
+    Purpose: creates an animated gif from a list of discrete single grain orientation
+        distributions (DSGODs)
+
+    Parameters
+    ----------
+    grain_rod_list : list of n x 3 numpy arrays
+        list of Rodrigues orientation vectors given as the rows of the array
+    grain_odf : list of n x 1 numpy arrays
+        list of orientation weights for each DSGOD, must be same length as 
+        grain_rod_list, if None will default to uniform distributions
+    labels_list : list of strings
+        list of labels for each frame in the gif, must be same length as 
+        grain_rod_list, if None will default to simple iteration labels
+    interval : int
+        milliseconds for each frame in the animation
+    save_gif_dir : string
+        full directory string to save gif to, if None it won't save gif
+
+    Returns
+    -------
+    None, can save gif
+        
+    Notes
+    -----
+    None
+    '''
+    
+    numframes = len(grain_rod_list)
+    
+    if labels_list is None:
+        labels_list = np.arange(numframes)
+    
+    if grain_odf_list is None:
+        grain_odf_list = []
+        for i in range(numframes):
+            grain_odf_list.append(np.ones([grain_rod_list[i].shape[0]]))
+        
+    # initialize plot
+    fig = plt.figure(figsize=[12, 8])
+    ori_ax = Axes3D(fig)
+    
+    # plot DSGOD
+    [fig, ori_ax] = plot_grain_dsgod(grain_rod_list[0], grain_odf=grain_odf_list[0], reverse_map=False, 
+                     just_faces=False, no_axis=False, cmap=plt.cm.viridis_r,
+                     scatter_size=100, fig=fig, ori_ax =ori_ax)
+    fig.suptitle('Time Step: %s' %(labels_list[0]))
+    
+    # set limits
+    init_avg_rod = np.atleast_2d(np.average(grain_rod_list[0], axis=0, weights=grain_odf_list[0]))
+    
+    # do function animation
+    ani = animation.FuncAnimation(fig, update_animate_dsgods_rod, interval=interval,
+                                  frames=numframes, fargs=(grain_rod_list, grain_odf_list, 
+                                                           labels_list, ori_ax, init_avg_rod, fig))
+    #mng = plt.get_current_fig_manager()
+    #mng.window.showMaximized()
+    
+    plt.show()
+    if save_gif_dir is not None:
+        ani.save(save_gif_dir, writer='imagemagick', dpi=400)
+
+def update_animate_dsgods_rod(i, grain_rod_list, grain_odf_list, labels_list, ori_ax,
+                        init_avg_rod, fig):
+    '''
+    Purpose: companion update function to animate_dsgods_rod
+
+    Parameters
+    ----------
+    i : int
+        frame number given by FuncAnimation
+    grain_rod_list : list of n x 3 numpy arrays
+        list of Rodrigues orientation vectors given as the rows of the array
+    grain_odf : list of n x 1 numpy arrays
+        list of orientation weights for each DSGOD, must be same length as 
+        grain_rod_list, if None will default to uniform distributions
+    labels_list : list of strings
+        list of labels for each frame in the gif, must be same length as 
+        grain_rod_list, if None will default to simple iteration labels
+    ori_ax : matplotlib.pyplot.ax
+        matplotlib ax object for the DSGOD plot
+    init_avg_rod : 1 x 3 numpy array
+        initial average Rodrigues orientation to center all plots on
+    fig : matplotliblpyplot.figure
+        matplotlib figure object for the DSGOD plot
+
+    Returns
+    -------
+    None, can save gif
+        
+    Notes
+    -----
+    None
+    '''
+    ori_ax.cla()
+      
+    [fig, ori_ax] = plot_grain_dsgod(grain_rod_list[i], grain_odf=grain_odf_list[i], reverse_map=False, 
+                     just_faces=False, no_axis=False, cmap=plt.cm.viridis_r,
+                     scatter_size=100, fig=fig, ori_ax =ori_ax)
+    fig.suptitle('Time Step: %s' %(labels_list[i]))
+
+    return ori_ax,
+
+# *****************************************************************************
+# EXPERIEMENTAL FUNCTION DECLARATION AND IMPLEMENTATION
+# *****************************************************************************
+
+# def process_dsgod_file(dsgod_npz_dir, scan=24, comp_thresh=0.85, inten_thresh=0, do_avg_ori=True, 
+#                        do_conn_comp=True, save=False, connectivity_type=18):
+#     # connectivity_type can be 26, 18, and 6
+#     # load grain data
+#     '''
+#     np.savez(dsgod_npz_save_dir, dsgod_box_shape=box_shape,
+#                  dsgod_avg_expmap=cur_exp_maps,
+#                  dsgod_box_comp=dsgod_box_comp, dsgod_box_quat=dsgod_box_quat,
+#                  dsgod_box_inten=dsgod_box_inten, dsgod_box_inten_list=dsgod_box_inten_list,
+#                  dsgod_box_hit_list=dsgod_box_hit_list, dsgod_box_filter_list=dsgod_box_filter_list)
+#     '''
+    
+#     grain_goe_info = np.load(dsgod_npz_dir)
+#     grain_goe_box = grain_goe_info['dsgod_box_shape']
+#     grain_quat = grain_goe_info['dsgod_box_quat'].astype(np.float32)
+#     grain_inten_arr = grain_goe_info['dsgod_box_inten_list'].astype(np.int32)
+#     grain_filter_arr = grain_goe_info['dsgod_box_filter_list'].astype(np.int8)
+#     grain_avg_expmap = grain_goe_info['dsgod_avg_expmap']
+#     grain_avg_quat = hexrd_rot.quatOfExpMap(grain_avg_expmap.T)
+    
+#     # transform orientation to Rodrigues vectors
+#     grain_quat = np.reshape(grain_quat, [grain_quat.shape[1], grain_quat.shape[2]])
+    
+#     # TIM WORK ****************************************************************
+#     # reverse sort intensities in high -> low order
+#     sort_ind = np.argsort(-grain_inten_arr, axis=1)
+#     sort_grain_inten_arr = np.take_along_axis(grain_inten_arr, sort_ind, axis=1)
+    
+#     # find index of intensity value to use based on completeness thresholding (Tim Long way)
+#     sum_filter = np.sum(grain_filter_arr, axis=1)
+#     comp_filter_ind = (comp_thresh * sum_filter).astype(int)
+    
+#     # gather intensity values based on index found above
+#     grain_inten = sort_grain_inten_arr[np.arange(grain_inten_arr.shape[0]), comp_filter_ind]
+    
+#     grain_inten[grain_inten < inten_thresh] = 0
+    
+#     if np.any(grain_inten > 0):
+        
+#         if do_conn_comp:
+#             # CONN COMP WORK ***********************************************************
+            
+#             conn_comp_inten = np.reshape(grain_inten, grain_goe_box)
+#             conn_comp_map = cc3d.connected_components(conn_comp_inten > inten_thresh, connectivity=connectivity_type)
+            
+#             if do_avg_ori:
+#                 # find nearest non-zero intenisty closest to avg orient as DSGOD group
+#                 nnz_inten_quats = grain_quat[:, grain_inten > inten_thresh]
+#                 grain_avg_quat_norms = np.linalg.norm(nnz_inten_quats - grain_avg_quat, axis=0)
+#                 avg_ori_quat = nnz_inten_quats[:, np.where(grain_avg_quat_norms == np.min(grain_avg_quat_norms))[0]]
+#                 avg_ori_ind = np.where((grain_quat == avg_ori_quat).all(axis=0))[0]
+                
+#                 # reshape conn comp to find center group number
+#                 group_num = np.reshape(conn_comp_map, [conn_comp_inten.size])[avg_ori_ind]
+#             else:
+#                 # find max count as GOE group
+#                 # find unique groups and counts
+#                 conn_comp_uni, conn_comp_count = np.unique(conn_comp_map, return_counts=True)
+#                 # remove 0 from list
+#                 conn_comp_count = conn_comp_count[(conn_comp_uni != 0)]
+#                 conn_comp_uni = conn_comp_uni[(conn_comp_uni != 0)]
+#                 # find the group number with max count and filter
+#                 group_num = conn_comp_uni[conn_comp_count == np.max(conn_comp_count)]
+            
+#             # remap values not in group to 0 adn values in group to 1
+#             conn_comp_map[conn_comp_map != group_num] = 0
+#             conn_comp_map[conn_comp_map == group_num] = 1
+            
+#             # set all intensities not in group to 0 and reshape
+#             conn_comp_inten[np.logical_not(conn_comp_map)] = 0
+#             thresh_grain_inten = np.reshape(conn_comp_inten, [conn_comp_inten.size])
+#         else:
+#             thresh_grain_inten = grain_inten
+            
+        
+#         # DSGOD WORK **************************************************************
+#         sum_grain_inten = np.sum(thresh_grain_inten)
+        
+#         if sum_grain_inten > 0:
+#             grain_odf = thresh_grain_inten / sum_grain_inten.astype(float)
+            
+#             print("Number of Diffraction Events: %i" %(grain_inten_arr.shape[1]))
+#             print('Max inten = %f, Min inten = %f' %(np.max(thresh_grain_inten), np.min(thresh_grain_inten)))
+#             #print('Max ODF = %f, Min ODF = %f' %(np.max(grain_odf)*100, np.min(grain_odf)*100))
+            
+#             grain_avg_quat = np.atleast_2d(np.average(grain_quat, axis=1, weights=grain_odf)).T
+            
+#             # MISOREINTATION WORK *****************************************************
+#             [grain_mis_quat, grain_mis_ang_deg, grain_avg_quat] = calc_misorientation(grain_quat, avg_quat=grain_avg_quat, disp_stats=False)
+#             calc_misorientation(grain_quat[:, grain_odf > 0], avg_quat=grain_avg_quat, disp_stats=False)
+#         else:
+#             print('1. Using avg quat')
+#             grain_quat = grain_avg_quat
+#             grain_odf = np.ones(grain_quat.shape[1])
+#             grain_mis_quat = np.zeros(grain_quat.shape)
+#             grain_mis_quat[0] = 1
+#             sum_grain_inten = 1
+#     else:
+#         print('2. Using avg quat')
+#         grain_quat = grain_avg_quat
+#         grain_odf = np.ones(grain_quat.shape[1])
+#         grain_mis_quat = np.zeros(grain_quat.shape)
+#         grain_mis_quat[0] = 1
+#         sum_grain_inten = 0
+        
+#     # RETURN ******************************************************************
+#     if save:
+#         dsgod_npz_save_dir = dsgod_npz_dir.split('.npz')[0]
+#         np.savez(dsgod_npz_save_dir + 'processed', dsgod_box_shape=grain_goe_box,
+#                  dsgod_avg_expmap=grain_avg_expmap, dsgod_avg_quat=grain_avg_quat,
+#                  dsgod_box_quat=grain_quat, dsgod_box_mis_quat=grain_mis_quat,
+#                  dsgod_box_dsgod=grain_odf, dsgod_comp_thresh=comp_thresh)
+    
+#     return [grain_quat, grain_mis_quat, grain_odf, sum_grain_inten]
+
+# def process_dsgod_file_inv(dsgod_npz_dir, scan=24, compl_thresh=0.85, reg_lambda=None,
+#                                do_conn_comp=False, do_avg_ori=False, connectivity_type=18,
+#                                do_dist=False, dist_thresh=None):
+#     # connectivity_type can be 26, 18, and 6
+#     # load odf info ***********************************************************
+#     '''
+#     np.savez(dsgod_npz_save_dir, dsgod_box_shape=box_shape,
+#                  dsgod_avg_expmap=cur_exp_maps,
+#                  dsgod_box_comp=dsgod_box_comp, dsgod_box_quat=dsgod_box_quat,
+#                  dsgod_box_inten=dsgod_box_inten, dsgod_box_inten_list=dsgod_box_inten_list,
+#                  dsgod_box_hit_list=dsgod_box_hit_list, dsgod_box_filter_list=dsgod_box_filter_list)
+#     '''
+#     grain_dsgod_info = np.load(dsgod_npz_dir)
+#     grain_dsgod_box = grain_dsgod_info['dsgod_box_shape']
+#     grain_compl = grain_dsgod_info['dsgod_box_comp']
+#     grain_quat = grain_dsgod_info['dsgod_box_quat']
+#     grain_inten_arr = grain_dsgod_info['dsgod_box_inten_list']
+#     grain_eta_arr = grain_dsgod_info['dsgod_box_eta_ind_list']
+#     grain_ome_arr = grain_dsgod_info['dsgod_box_ome_ind_list']
+#     grain_avg_quat = hexrd_rot.quatOfExpMap(grain_dsgod_info['dsgod_avg_expmap'].T)
+    
+#     # reshape completeness and orientation
+#     grain_compl = grain_compl.T
+#     grain_quat = np.reshape(grain_quat, [grain_quat.shape[1], grain_quat.shape[2]]).T
+    
+#     # threshold by distance
+#     if do_dist:
+#         # distance from average orientation threshold
+#         grain_avg_quat_norms = np.linalg.norm(grain_quat.T - grain_avg_quat, axis=0)
+#         dist_thresh_ind = np.where(grain_avg_quat_norms <= dist_thresh)[0]
+        
+#         grain_quat = grain_quat[dist_thresh_ind, :]
+#         grain_inten_arr = grain_inten_arr[dist_thresh_ind, :]
+#         grain_eta_arr = grain_eta_arr[dist_thresh_ind, :]
+#         grain_ome_arr = grain_ome_arr[dist_thresh_ind, :]
+#         grain_compl = grain_compl[dist_thresh_ind]
+    
+#     # threshold by completeness
+#     compl_ind = np.where(grain_compl >= compl_thresh)[0]
+#     compl_grain_quat = grain_quat[compl_ind, :]
+#     compl_grain_inten_arr = grain_inten_arr[compl_ind, :]
+#     compl_grain_eta_arr = grain_eta_arr[compl_ind, :]
+#     compl_grain_ome_arr = grain_ome_arr[compl_ind, :]
+    
+#     # reshape intensity and eta-ome indices
+#     inten_flat = compl_grain_inten_arr.flatten()
+#     eta_ome_flat = np.vstack([compl_grain_eta_arr.flatten(), compl_grain_ome_arr.flatten()]).T
+    
+#     # assemble Ax=b ***********************************************************
+#     uni_eta_ome, uni_index = np.unique(eta_ome_flat, return_index=True, axis=0)
+#     b_inten = inten_flat[uni_index]
+    
+#     # see if [-1, -1] is the first entry for indices and remove, [-1, -1] means orientation filtered out
+#     bad_ind = np.where((uni_eta_ome == [-1,-1]).all(axis=1))[0]
+#     uni_eta_ome = np.delete(uni_eta_ome, bad_ind, axis=0)
+#     b_inten = np.delete(b_inten, bad_ind, axis=0)
+    
+#     # gather matrix dimensions 
+#     num_ori = compl_grain_inten_arr.shape[0]
+#     num_reflections = compl_grain_inten_arr.shape[1]
+#     num_inten = b_inten.shape[0]
+    
+#     # assemble A
+#     A_index = np.zeros([num_inten, num_ori])
+#     for i in np.arange(num_inten):
+#         temp_uni_eta_ome = uni_eta_ome[i, :]
+#         temp_grain_ind = np.where((eta_ome_flat == temp_uni_eta_ome).all(axis=1))[0]
+#         temp_A_ind = np.floor(temp_grain_ind / num_reflections).astype(int)
+#         A_index[i, temp_A_ind] = 1
+    
+#     # apply Tikhonov regularization, if needed
+#     if reg_lambda is not None:
+#         A_index = np.vstack([A_index, reg_lambda * np.eye(num_ori)])
+#         b_inten = np.hstack([b_inten, np.zeros(num_ori)]).T
+    
+#     # print information of linear system
+#     print("Shape of Mat A: %i x %i (num_pixels x num_orientations)" %(A_index.shape[0], A_index.shape[1]))
+#     print("Number of Diffraction Events: %i" %(num_reflections))
+    
+#     # solve Ax=b, preint residual
+#     x_ori_weights, resid = nnls(A_index, b_inten)
+#     print("Residual ||Ax - b|| / ||b||= %f" %(resid/np.linalg.norm(b_inten)))
+    
+#     # process dsgod for connected components (conn comp) **********************
+#     if do_conn_comp:
+#         # conn comp work set up
+#         ori_weight_thresh = 0
+        
+#         # assemble conn ccomp map of ori weightssss
+#         conn_comp_ori_weights = np.zeros(grain_dsgod_box[0] * grain_dsgod_box[1] * grain_dsgod_box[2])
+#         conn_comp_ori_weights[compl_ind] = x_ori_weights
+#         conn_comp_ori_weights.shape = grain_dsgod_box
+#         conn_comp_map = cc3d.connected_components(conn_comp_ori_weights > ori_weight_thresh, connectivity=connectivity_type)
+        
+#         if do_avg_ori:
+#             # find avg orient as DSGOD group
+#             grain_avg_quat_norms = np.linalg.norm(grain_quat.T - grain_avg_quat, axis=0)
+#             avg_ori_ind = np.where(grain_avg_quat_norms == np.min(grain_avg_quat_norms))
+            
+#             # reshape conn comp to find center group number
+#             group_num = np.reshape(conn_comp_map, [conn_comp_ori_weights.size])[avg_ori_ind]
+#         else:
+#             # find max count as DSGOD group
+#             # find unique groups and counts
+#             conn_comp_uni, conn_comp_count = np.unique(conn_comp_map, return_counts=True)
+            
+#             # remove 0 from list
+#             conn_comp_count = conn_comp_count[(conn_comp_uni != 0)]
+#             conn_comp_uni = conn_comp_uni[(conn_comp_uni != 0)]
+            
+#             # find the group number with max count and filter
+#             group_num = conn_comp_uni[conn_comp_count == np.max(conn_comp_count)]
+        
+#         # remap values not in group to 0 adn values in group to 1
+#         conn_comp_map[conn_comp_map != group_num] = 0
+#         conn_comp_map[conn_comp_map == group_num] = 1
+        
+#         # set all intensities not in group to 0 and reshape
+#         conn_comp_ori_weights[np.logical_not(conn_comp_map)] = 0
+#         thresh_ori_weights = np.reshape(conn_comp_ori_weights, [conn_comp_ori_weights.size])
+        
+#         # threshold non-zero weights
+#         grain_ori_weights_ind = np.where(thresh_ori_weights > 0)[0]
+#         grain_compl = grain_compl[grain_ori_weights_ind]
+#         grain_quat = grain_quat[grain_ori_weights_ind, :]
+#         grain_ori_weights = thresh_ori_weights[grain_ori_weights_ind]
+    
+#     else:
+#         # return orientation weights as is, no connected components work
+#         grain_ori_weights = x_ori_weights
+#         grain_compl = grain_compl[compl_ind]
+#         grain_quat = compl_grain_quat
+    
+#     return [grain_quat, grain_compl, grain_ori_weights]
+
+
