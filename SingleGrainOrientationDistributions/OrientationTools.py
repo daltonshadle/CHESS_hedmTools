@@ -778,6 +778,32 @@ def exp_map2rod(exp_map):
 def rod2exp_map(rod):
     return quat2exp_map(rod2quat(rod))
 
+def calc_misorientation_quat(quat1, quat2_mat):
+    '''
+    Purpose: calculates misorientation between rod1 and rod2_mat
+
+    Parameters
+    ----------
+    quat1 : TYPE
+        DESCRIPTION.
+    quat2_mat : TYPE
+        DESCRIPTION.
+
+    Returns
+    -------
+    mis_ang_deg : TYPE
+        DESCRIPTION.
+    mis_rod : TYPE
+        DESCRIPTION.
+
+    '''
+    
+    # calculate misorientation angles and vectors
+    [mis_ang_rad, mis_quat] = hexrd_rot.misorientation(quat1, quat2_mat)
+    mis_ang_deg = 180/np.pi * mis_ang_rad
+    
+    return mis_ang_deg, mis_quat
+
 def calc_misorientation_rod(rod1, rod2_mat):
     '''
     Purpose: calculates misorientation between rod1 and rod2_mat

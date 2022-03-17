@@ -13,7 +13,7 @@ Created on Thu Mar 10 08:13:32 2022
 import sys
 #import os
 
-#import cc3d
+import cc3d
 
 import numpy as np
 
@@ -490,120 +490,123 @@ def update_animate_dsgods_rod(i, grain_rod_list, grain_odf_list, labels_list, or
 # EXPERIEMENTAL FUNCTION DECLARATION AND IMPLEMENTATION
 # *****************************************************************************
 
-# def process_dsgod_file(dsgod_npz_dir, scan=24, comp_thresh=0.85, inten_thresh=0, do_avg_ori=True, 
-#                        do_conn_comp=True, save=False, connectivity_type=18):
-#     # connectivity_type can be 26, 18, and 6
-#     # load grain data
-#     '''
-#     np.savez(dsgod_npz_save_dir, dsgod_box_shape=box_shape,
-#                  dsgod_avg_expmap=cur_exp_maps,
-#                  dsgod_box_comp=dsgod_box_comp, dsgod_box_quat=dsgod_box_quat,
-#                  dsgod_box_inten=dsgod_box_inten, dsgod_box_inten_list=dsgod_box_inten_list,
-#                  dsgod_box_hit_list=dsgod_box_hit_list, dsgod_box_filter_list=dsgod_box_filter_list)
-#     '''
+def process_dsgod_file(dsgod_npz_dir, scan=24, comp_thresh=0.85, inten_thresh=0, do_avg_ori=True, 
+                        do_conn_comp=True, save=False, connectivity_type=18):
+    # connectivity_type can be 26, 18, and 6
+    # load grain data
+    '''
+    np.savez(dsgod_npz_save_dir, dsgod_box_shape=box_shape,
+                  dsgod_avg_expmap=cur_exp_maps,
+                  dsgod_box_comp=dsgod_box_comp, dsgod_box_quat=dsgod_box_quat,
+                  dsgod_box_inten=dsgod_box_inten, dsgod_box_inten_list=dsgod_box_inten_list,
+                  dsgod_box_hit_list=dsgod_box_hit_list, dsgod_box_filter_list=dsgod_box_filter_list)
+    '''
     
-#     grain_goe_info = np.load(dsgod_npz_dir)
-#     grain_goe_box = grain_goe_info['dsgod_box_shape']
-#     grain_quat = grain_goe_info['dsgod_box_quat'].astype(np.float32)
-#     grain_inten_arr = grain_goe_info['dsgod_box_inten_list'].astype(np.int32)
-#     grain_filter_arr = grain_goe_info['dsgod_box_filter_list'].astype(np.int8)
-#     grain_avg_expmap = grain_goe_info['dsgod_avg_expmap']
-#     grain_avg_quat = hexrd_rot.quatOfExpMap(grain_avg_expmap.T)
+    grain_goe_info = np.load(dsgod_npz_dir)
+    grain_goe_box = grain_goe_info['dsgod_box_shape']
+    grain_quat = grain_goe_info['dsgod_box_quat'].astype(np.float32)
+    grain_inten_arr = grain_goe_info['dsgod_box_inten_list'].astype(np.int32)
+    grain_filter_arr = grain_goe_info['dsgod_box_filter_list'].astype(np.int8)
+    grain_avg_expmap = grain_goe_info['dsgod_avg_expmap']
+    grain_avg_quat = hexrd_rot.quatOfExpMap(grain_avg_expmap.T)
     
-#     # transform orientation to Rodrigues vectors
-#     grain_quat = np.reshape(grain_quat, [grain_quat.shape[1], grain_quat.shape[2]])
+    # transform orientation to Rodrigues vectors
+    grain_quat = np.reshape(grain_quat, [grain_quat.shape[1], grain_quat.shape[2]])
     
-#     # TIM WORK ****************************************************************
-#     # reverse sort intensities in high -> low order
-#     sort_ind = np.argsort(-grain_inten_arr, axis=1)
-#     sort_grain_inten_arr = np.take_along_axis(grain_inten_arr, sort_ind, axis=1)
+    # TIM WORK ****************************************************************
+    # reverse sort intensities in high -> low order
+    sort_ind = np.argsort(-grain_inten_arr, axis=1)
+    sort_grain_inten_arr = np.take_along_axis(grain_inten_arr, sort_ind, axis=1)
     
-#     # find index of intensity value to use based on completeness thresholding (Tim Long way)
-#     sum_filter = np.sum(grain_filter_arr, axis=1)
-#     comp_filter_ind = (comp_thresh * sum_filter).astype(int)
+    # find index of intensity value to use based on completeness thresholding (Tim Long way)
+    sum_filter = np.sum(grain_filter_arr, axis=1)
+    comp_filter_ind = (comp_thresh * sum_filter).astype(int)
     
-#     # gather intensity values based on index found above
-#     grain_inten = sort_grain_inten_arr[np.arange(grain_inten_arr.shape[0]), comp_filter_ind]
+    # gather intensity values based on index found above
+    grain_inten = sort_grain_inten_arr[np.arange(grain_inten_arr.shape[0]), comp_filter_ind]
     
-#     grain_inten[grain_inten < inten_thresh] = 0
+    grain_inten[grain_inten < inten_thresh] = 0
     
-#     if np.any(grain_inten > 0):
+    print(np.sum(grain_inten))
+    
+    if np.any(grain_inten > 0):
         
-#         if do_conn_comp:
-#             # CONN COMP WORK ***********************************************************
+        if do_conn_comp:
+            # CONN COMP WORK ***********************************************************
             
-#             conn_comp_inten = np.reshape(grain_inten, grain_goe_box)
-#             conn_comp_map = cc3d.connected_components(conn_comp_inten > inten_thresh, connectivity=connectivity_type)
+            conn_comp_inten = np.reshape(grain_inten, grain_goe_box)
+            conn_comp_map = cc3d.connected_components(conn_comp_inten > inten_thresh, connectivity=connectivity_type)
             
-#             if do_avg_ori:
-#                 # find nearest non-zero intenisty closest to avg orient as DSGOD group
-#                 nnz_inten_quats = grain_quat[:, grain_inten > inten_thresh]
-#                 grain_avg_quat_norms = np.linalg.norm(nnz_inten_quats - grain_avg_quat, axis=0)
-#                 avg_ori_quat = nnz_inten_quats[:, np.where(grain_avg_quat_norms == np.min(grain_avg_quat_norms))[0]]
-#                 avg_ori_ind = np.where((grain_quat == avg_ori_quat).all(axis=0))[0]
+            if do_avg_ori:
+                # find nearest non-zero intenisty closest to avg orient as DSGOD group
+                nnz_inten_quats = grain_quat[:, grain_inten > inten_thresh]
+                grain_avg_quat_norms = np.linalg.norm(nnz_inten_quats - grain_avg_quat, axis=0)
+                avg_ori_quat = nnz_inten_quats[:, np.where(grain_avg_quat_norms == np.min(grain_avg_quat_norms))[0]]
+                avg_ori_ind = np.where((grain_quat == avg_ori_quat).all(axis=0))[0]
                 
-#                 # reshape conn comp to find center group number
-#                 group_num = np.reshape(conn_comp_map, [conn_comp_inten.size])[avg_ori_ind]
-#             else:
-#                 # find max count as GOE group
-#                 # find unique groups and counts
-#                 conn_comp_uni, conn_comp_count = np.unique(conn_comp_map, return_counts=True)
-#                 # remove 0 from list
-#                 conn_comp_count = conn_comp_count[(conn_comp_uni != 0)]
-#                 conn_comp_uni = conn_comp_uni[(conn_comp_uni != 0)]
-#                 # find the group number with max count and filter
-#                 group_num = conn_comp_uni[conn_comp_count == np.max(conn_comp_count)]
+                # reshape conn comp to find center group number
+                group_num = np.reshape(conn_comp_map, [conn_comp_inten.size])[avg_ori_ind]
+            else:
+                # find max count as GOE group
+                # find unique groups and counts
+                conn_comp_uni, conn_comp_count = np.unique(conn_comp_map, return_counts=True)
+                # remove 0 from list
+                conn_comp_count = conn_comp_count[(conn_comp_uni != 0)]
+                conn_comp_uni = conn_comp_uni[(conn_comp_uni != 0)]
+                # find the group number with max count and filter
+                group_num = conn_comp_uni[conn_comp_count == np.max(conn_comp_count)]
             
-#             # remap values not in group to 0 adn values in group to 1
-#             conn_comp_map[conn_comp_map != group_num] = 0
-#             conn_comp_map[conn_comp_map == group_num] = 1
+            # remap values not in group to 0 adn values in group to 1
+            conn_comp_map[conn_comp_map != group_num] = 0
+            conn_comp_map[conn_comp_map == group_num] = 1
             
-#             # set all intensities not in group to 0 and reshape
-#             conn_comp_inten[np.logical_not(conn_comp_map)] = 0
-#             thresh_grain_inten = np.reshape(conn_comp_inten, [conn_comp_inten.size])
-#         else:
-#             thresh_grain_inten = grain_inten
+            # set all intensities not in group to 0 and reshape
+            conn_comp_inten[np.logical_not(conn_comp_map)] = 0
+            thresh_grain_inten = np.reshape(conn_comp_inten, [conn_comp_inten.size])
+        else:
+            thresh_grain_inten = grain_inten
             
         
-#         # DSGOD WORK **************************************************************
-#         sum_grain_inten = np.sum(thresh_grain_inten)
+        # DSGOD WORK **************************************************************
+        sum_grain_inten = np.sum(thresh_grain_inten)
+        print(sum_grain_inten)
         
-#         if sum_grain_inten > 0:
-#             grain_odf = thresh_grain_inten / sum_grain_inten.astype(float)
+        if sum_grain_inten > 0:
+            grain_odf = thresh_grain_inten / sum_grain_inten.astype(float)
             
-#             print("Number of Diffraction Events: %i" %(grain_inten_arr.shape[1]))
-#             print('Max inten = %f, Min inten = %f' %(np.max(thresh_grain_inten), np.min(thresh_grain_inten)))
-#             #print('Max ODF = %f, Min ODF = %f' %(np.max(grain_odf)*100, np.min(grain_odf)*100))
+            print("Number of Diffraction Events: %i" %(grain_inten_arr.shape[1]))
+            print('Max inten = %f, Min inten = %f' %(np.max(thresh_grain_inten), np.min(thresh_grain_inten)))
+            #print('Max ODF = %f, Min ODF = %f' %(np.max(grain_odf)*100, np.min(grain_odf)*100))
             
-#             grain_avg_quat = np.atleast_2d(np.average(grain_quat, axis=1, weights=grain_odf)).T
+            grain_avg_quat = np.atleast_2d(np.average(grain_quat, axis=1, weights=grain_odf)).T
             
-#             # MISOREINTATION WORK *****************************************************
-#             [grain_mis_quat, grain_mis_ang_deg, grain_avg_quat] = calc_misorientation(grain_quat, avg_quat=grain_avg_quat, disp_stats=False)
-#             calc_misorientation(grain_quat[:, grain_odf > 0], avg_quat=grain_avg_quat, disp_stats=False)
-#         else:
-#             print('1. Using avg quat')
-#             grain_quat = grain_avg_quat
-#             grain_odf = np.ones(grain_quat.shape[1])
-#             grain_mis_quat = np.zeros(grain_quat.shape)
-#             grain_mis_quat[0] = 1
-#             sum_grain_inten = 1
-#     else:
-#         print('2. Using avg quat')
-#         grain_quat = grain_avg_quat
-#         grain_odf = np.ones(grain_quat.shape[1])
-#         grain_mis_quat = np.zeros(grain_quat.shape)
-#         grain_mis_quat[0] = 1
-#         sum_grain_inten = 0
+            # MISOREINTATION WORK *****************************************************
+            [grain_mis_ang_deg, grain_mis_quat] = OrientationTools.calc_misorientation_quat(grain_avg_quat, grain_quat)
+            #calc_misorientation(grain_quat[:, grain_odf > 0], avg_quat=grain_avg_quat, disp_stats=False)
+        else:
+            print('1. Using avg quat')
+            grain_quat = grain_avg_quat
+            grain_odf = np.ones(grain_quat.shape[1])
+            grain_mis_quat = np.zeros(grain_quat.shape)
+            grain_mis_quat[0] = 1
+            sum_grain_inten = 1
+    else:
+        print('2. Using avg quat')
+        grain_quat = grain_avg_quat
+        grain_odf = np.ones(grain_quat.shape[1])
+        grain_mis_quat = np.zeros(grain_quat.shape)
+        grain_mis_quat[0] = 1
+        sum_grain_inten = 0
         
-#     # RETURN ******************************************************************
-#     if save:
-#         dsgod_npz_save_dir = dsgod_npz_dir.split('.npz')[0]
-#         np.savez(dsgod_npz_save_dir + 'processed', dsgod_box_shape=grain_goe_box,
-#                  dsgod_avg_expmap=grain_avg_expmap, dsgod_avg_quat=grain_avg_quat,
-#                  dsgod_box_quat=grain_quat, dsgod_box_mis_quat=grain_mis_quat,
-#                  dsgod_box_dsgod=grain_odf, dsgod_comp_thresh=comp_thresh)
+    # RETURN ******************************************************************
+    if save:
+        dsgod_npz_save_dir = dsgod_npz_dir.split('.npz')[0]
+        np.savez(dsgod_npz_save_dir + 'processed', dsgod_box_shape=grain_goe_box,
+                  dsgod_avg_expmap=grain_avg_expmap, dsgod_avg_quat=grain_avg_quat,
+                  dsgod_box_quat=grain_quat, dsgod_box_mis_quat=grain_mis_quat,
+                  dsgod_box_dsgod=grain_odf, dsgod_comp_thresh=comp_thresh)
     
-#     return [grain_quat, grain_mis_quat, grain_odf, sum_grain_inten]
+    return [grain_quat, grain_mis_quat, grain_odf]
 
 # def process_dsgod_file_inv(dsgod_npz_dir, scan=24, compl_thresh=0.85, reg_lambda=None,
 #                                do_conn_comp=False, do_avg_ori=False, connectivity_type=18,
