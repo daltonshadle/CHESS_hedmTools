@@ -490,9 +490,48 @@ def update_animate_dsgods_rod(i, grain_rod_list, grain_odf_list, labels_list, or
 # EXPERIEMENTAL FUNCTION DECLARATION AND IMPLEMENTATION
 # *****************************************************************************
 
-def process_dsgod_file(dsgod_npz_dir, scan=24, comp_thresh=0.85, inten_thresh=0, do_avg_ori=True, 
+def process_dsgod_file(dsgod_npz_dir, comp_thresh=0.85, inten_thresh=0, do_avg_ori=True, 
                         do_conn_comp=True, save=False, connectivity_type=18):
-    # connectivity_type can be 26, 18, and 6
+    '''
+    Purpose: processing raw DSGOD file created from HEDM / VD data
+
+    Parameters
+    ----------
+    dsgod_npz_dir : string
+        path to dsgod .npz file
+    comp_thresh : float, optional
+        completeness threshold for gathering intensity info to construct dsgod.
+        The default is 0.85.
+    inten_thresh : float, optional
+        intensity threshold to construct dsgod, not recommended. 
+        The default is 0.
+    do_avg_ori : bool, optional
+        flag for using average orientation to identify reference orientaiton 
+        cloud if there are multiple clouds in the raw DSGOD file. 
+        The default is True.
+    do_conn_comp : bool, optional
+        flag for using connected components to identify reference orientation 
+        cloud if there are multiple clouds in the raw DSGOD file. 
+        The default is True.
+    save : bool, optional
+        flag for saving DSGOD results. The default is False.
+    connectivity_type : int, optional
+        describes connectivity for connected components, can be 26, 18, and 6. 
+        The default is 18.
+
+    Returns
+    -------
+    [grain_quat, grain_mis_quat, grain_odf]
+    grain_quat : numpy array (n x 4)
+        list of quaternions in DSGOD
+    grain_mis_quat: numpy array (n x 4)
+        list of misorientation quaternions (when compared to average 
+        orientation) in DSGOD
+    grain_odf: numpy array (n x 1)
+        list of weights for orientations in DSGOD
+
+    '''
+    
     # load grain data
     '''
     np.savez(dsgod_npz_save_dir, dsgod_box_shape=box_shape,
@@ -524,10 +563,7 @@ def process_dsgod_file(dsgod_npz_dir, scan=24, comp_thresh=0.85, inten_thresh=0,
     
     # gather intensity values based on index found above
     grain_inten = sort_grain_inten_arr[np.arange(grain_inten_arr.shape[0]), comp_filter_ind]
-    
     grain_inten[grain_inten < inten_thresh] = 0
-    
-    print(np.sum(grain_inten))
     
     if np.any(grain_inten > 0):
         
