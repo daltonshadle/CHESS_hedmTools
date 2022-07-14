@@ -29,7 +29,12 @@ output_dir = os.path.join(base_dir, 'vd_output/')
 
 # virt diff variables
 ome_period = [-180, 180] # since variable is deprecated in hexrd.config, define here
-fwhm = 1.2
+fwhm = 0.8 
+# NOTE: fwhm values for detectors and filters below (psf_sigma values taken from APEX-RD)
+# psf_sigma: GE = 0.55, Dexela = 0.4
+# fwhm GAUSS: GE = 0.85, Dexela = 0.62
+# fwhm LORENTZ: GE = 1.1, Dexela = 0.8
+
 cts_per_event = 100.0
 min_inten = 1.0
 max_inten = 65000

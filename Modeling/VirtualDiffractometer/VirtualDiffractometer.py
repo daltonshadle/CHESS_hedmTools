@@ -341,7 +341,10 @@ def calc_diffraction_detector_intercepts_and_frame(grain_mat, cfg_file,
 ###############################################################################
 # Filters For Point Spread
 def make_gaussian_filter(size,fwhm):
-    sigma=fwhm/(2.*np.sqrt(2.*np.log(2.)))   
+    # NOTE: (taken from APEX-RD)
+    # sigma = 0.55 for GE Detector
+    # sigma = 0.40 for Dexela Detector
+    sigma=fwhm/(2.*np.sqrt(2.*np.log(2.)))
     gaussFilter=np.zeros(size)
     cenRow=size[0]/2.
     cenCol=size[1]/2.
@@ -361,7 +364,9 @@ def make_gaussian_filter(size,fwhm):
     return gaussFilter
 
 def make_lorentzian_filter(size,fwhm):
-    
+    # NOTE: (taken from APEX-RD)
+    # sigma = 0.55 for GE Detector
+    # sigma = 0.40 for Dexela Detector
     gamma=fwhm/2.  
     
     lorentzianFilter=np.zeros(size)
