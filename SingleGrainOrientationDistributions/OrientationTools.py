@@ -866,6 +866,131 @@ def calc_misorientation_expmap(exp1, exp2_mat):
     
     return mis_ang_deg, mis_expmap
 
+def calc_closest_orientaiton_configuration_quats(ref_quat, quats, sym='cubic'):
+    '''
+    Purpose: Find the closest quaternion configuration (inside or outside the 
+             fundamental region) of quats to the ref_quat, this can be used in
+             an effort to "rejoin" orientations separated once mapped to FR
+
+    Parameters
+    ----------
+    ref_quat : numpy array (4 x 1)
+        reference quaternion for all the other quats to find the closest
+        configuration to it
+    quats : numpy array (4 x n)
+        an array of n quaternions to find closest configurations of
+    sym : string, optional
+        choose symmetry type. The default (and only option) is 'cubic'.
+
+    Raises
+    ------
+    RuntimeError
+        DESCRIPTION.
+
+    Returns
+    -------
+    q2_remap : numpy array (4 x n)
+        remapped configuation of quats that is closest to ref_quat
+    angle : numpy array (n)
+        list of all misorientation angles of q2_remap quats and ref_quat in 
+        radians
+
+    '''
+    
+    q1 = ref_quat
+    q2 = quats
+    
+    # *************************************************************************
+    # the following code is augmented from hexrd.rotations.misorientation
+    if not isinstance(q1, np.ndarray) or not isinstance(q2, np.ndarray):
+        raise RuntimeError("quaternion args are not of type `numpy ndarray'")
+
+    if q1.ndim != 2 or q2.ndim != 2:
+        raise RuntimeError(
+            "quaternion args are the wrong shape; must be 2-d (columns)"
+        )
+
+    if q1.shape[1] != 1:
+        raise RuntimeError(
+            "first argument should be a single quaternion, got shape %s"
+            % (q1.shape,)
+        )
+    
+    if sym == 'cubic':
+        # in original code for hrexrd.rotations, sym is a tuple consisting of 
+        # (crystal_symmetry, *sample_symmetry)
+        sym = [CubSymmetries()]
+        if len(sym) == 1:
+            if not isinstance(sym[0], np.ndarray):
+                raise RuntimeError("symmetry argument is not an numpy array")
+            else:
+                # add triclinic sample symmetry (identity)
+                sym += (np.c_[1., 0, 0, 0].T,)
+        elif len(sym) == 2:
+            if not isinstance(sym[0], np.ndarray) \
+              or not isinstance(sym[1], np.ndarray):
+                raise RuntimeError(
+                    "symmetry arguments are not an numpy arrays"
+                )
+        elif len(sym) > 2:
+            raise RuntimeError(
+                "symmetry argument has %d entries; should be 1 or 2"
+                % (len(sym))
+            )
+        
+
+    # set some lengths
+    n = q2.shape[1]             # length of misorientation list
+    m = sym[0].shape[1]         # crystal (right)
+    p = sym[1].shape[1]         # sample  (left)
+
+    # tile q1 inverse
+    q1i = hexrd_rot.quatProductMatrix(hexrd_rot.invertQuat(q1), mult='right').squeeze()
+
+    # convert symmetries to (4, 4) qprod matrices
+    rsym = hexrd_rot.quatProductMatrix(sym[0], mult='right')
+    lsym = hexrd_rot.quatProductMatrix(sym[1], mult='left')
+
+    # Do R * Gc, store as
+    # [q2[:, 0] * Gc[:, 0:m], ..., q2[:, n-1] * Gc[:, 0:m]]
+    q2 = np.dot(rsym, q2).transpose(2, 0, 1).reshape(m*n, 4).T
+
+    # Do Gs * (R * Gc), store as
+    # [Gs[:, 0:p]*q[:,   0]*Gc[:, 0], ..., Gs[:, 0:p]*q[:,   0]*Gc[:, m-1], ...
+    #  Gs[:, 0:p]*q[:, n-1]*Gc[:, 0], ..., Gs[:, 0:p]*q[:, n-1]*Gc[:, m-1]]
+    q2 = np.dot(lsym, q2).transpose(2, 0, 1).reshape(p*m*n, 4).T
+
+    # Calculate the class misorientations for full symmetrically equivalent
+    # classes for q1 and q2.  Note the use of the fact that the application
+    # of the symmetry groups is an isometry.
+    eqvMis = hexrd_rot.fixQuat(np.dot(q1i, q2))
+
+    # Reshape scalar comp columnwise by point in q2 (and q1, if applicable)
+    sclEqvMis = eqvMis[0, :].reshape(n, p*m).T
+
+    # Find misorientation closest to origin for each n equivalence classes
+    #   - fixed quats so garaunteed that sclEqvMis is nonnegative
+    qmax = sclEqvMis.max(0)
+
+    # remap indices to use in eqvMis
+    qmaxInd = (sclEqvMis == qmax).nonzero()
+    qmaxInd = np.c_[qmaxInd[0], qmaxInd[1]]
+
+    eqvMisColInd = np.sort(qmaxInd[:, 0] + qmaxInd[:, 1]*p*m)
+
+    # store Rmin in q
+    # mis = eqvMis[np.ix_(list(range(4)), eqvMisColInd)]
+
+    angle = 2 * hexrd_rot.arccosSafe(qmax)
+    # end augmented code
+    # *************************************************************************
+    
+    # find the quaternions remapped to be closest to the center_quat
+    q2_remap = q2[:, eqvMisColInd]
+    
+    return q2_remap, angle
+
+
 def plot_eta_ome_maps(eta_ome_dir, vmin=None, vmax=None, show_hkl_list=None):
     if os.path.exists(eta_ome_dir):
         eta_ome = EtaOmeMaps(eta_ome_dir)
@@ -925,6 +1050,23 @@ if __name__ == "__main__":
     quat = discretizeFundamentalRegion(phi1_step=5, theta_step=5, phi2_step=5, ret_type='quat')
     exp_map = quat2exp_map(quat)
     print(exp_map.shape)
+    
+    rod = np.array([[0, 0, 0.4], [0, 0, 0.425], [0, 0, 0.45]])
+    rod = quat2rod(hexrd_rot.toFundamentalRegion(rod2quat(rod).T).T)
+
+    fig = plt.figure()
+    ax = Axes3D(fig)
+    ax.scatter(rod[:, 0], rod[:, 1], rod[:, 2], c='r')
+    ax = PlotFR('cubic', ax)
+
+    ret_val = calc_closest_orientaiton_configuration_quats(rod2quat(np.atleast_2d(rod[0, :])).T, rod2quat(rod).T)
+
+    rod_fix = quat2rod(ret_val[0].T)
+    fig = plt.figure()
+    ax = Axes3D(fig)
+    ax.scatter(rod_fix[:, 0], rod_fix[:, 1], rod_fix[:, 2], c='g')
+    ax = PlotFR('cubic', ax)
+    plt.show()
 
 
 
