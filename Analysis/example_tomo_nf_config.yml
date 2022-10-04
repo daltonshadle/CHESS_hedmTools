@@ -1,0 +1,93 @@
+analysis_name: example  # defaults to analysis
+
+# working directory defaults to current working directory
+# all relative paths specified herein are assumed to be in the working_dir
+# any files not in working_dir should be specified with an absolute path
+#
+# working_dir:
+
+# "all", "half", or -1 means all but one, defaults to -1
+multiprocessing: 64
+maxram: 256 # in GB
+
+material:
+  definitions: materials.h5
+  active: in718
+
+instrument: example_tomo_nf_retiga_instr.yml
+
+directory:
+  main_dir:
+  output_dir:
+  grains_out_file:
+  image_stem: 'nf_'
+  # output_stem will be analysis name
+  
+  # dark field items, image start is 6th file in the folder
+  dark_field_dir:
+  dark_image_start:
+  dark_num_images:
+  
+  # bright field items, image start is 6th file in the folder
+  bright_field_dir:
+  bright_image_start:
+  bright_num_images:
+  
+  # tomo data items, image start is 6th file in the folder
+  tomo_data_dir:
+  tomo_data_image_start:
+  tomo_data_num_images:
+  
+  # tomo data items, image start is 6th file in the folder
+  nf_data_dir:
+  nf_data_image_start:
+  nf_data_num_images:
+
+reconstruction:
+  cross_sectional_dim: 1.35 #cross sectional to reconstruct (should be at least 20%-30% over sample width in mm)
+  voxel_spacing: 0.005 #in mm
+  v_bnds: [-0.4, 0.4] # in mm
+  ome_range: [0, 359.75] # in degrees
+
+tomo:
+  # tomography options
+  recon_thresh: 0.0002 #usually varies between 0.0001 and 0.0005
+  # Don't change these unless you know what you are doing, this will close small holes and remove noise
+  noise_obj_size: 500
+  min_hole_size: 500
+  erosion_iter: 1
+  dilation_iter: 1
+  project_single_layer: false #projects the center layers through the volume, faster but not recommended, included for completion / historical purposes
+  
+nf:
+  # near field options
+  max_tth: 14.0 # in degrees or None
+  
+  # reconstruction with misorientation included, for many grains, this will quickly
+  # make the reconstruction size unmanagable
+  misorientation_bnd: 0.0 #degrees 
+  misorientation_spacing: 0.25 #degrees
+  
+  # image processing parameters
+  num_for_dark: 250 #num images to use for median nf data
+  
+  # process can be 'gaussian' or 'dialations_only'
+  # process_args for gaussian = [gauss_sigma, gauss_filter_size] usually [2.0, 3.0]
+  # process_args for dilation_only = [num_erosions, num_dilations] usually [2, 3]
+  process_type: 'gaussian'
+  process_args: [2.0, 3.0]
+  threshold: 1.5
+  ome_dilation_iter: 1 #num iterations of 3d image stack dilations, don't mess with unless you know what you're doing
+  
+  comp_thresh: 0.0 # only use orientations from grains with completnesses ABOVE this threshold
+  chi2_thresh: 1.0 # only use orientations from grains BELOW this chi^2
+  
+  use_tomo_mask: true
+  tomo_mask_file: 
+  tomo_mask_vert_offset: -0.3 #this is generally the difference in y motor positions between the tomo and nf layer (tomo_motor_z-nf_motor_z), needed for registry
+  
+  beam_stop_y_center: 0.0 #mm, measured from the origin of the detector paramters
+  beam_stop_width: 0.6 #mm, width of the beam stop vertically
+  
+  
+  

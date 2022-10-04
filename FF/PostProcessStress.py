@@ -61,7 +61,7 @@ INCONEL_718_SX_STIFF = np.array([[c11, c12, c12,   0,   0,   0],
 INCONEL_718_E = 199e9 # found from DIC measurements in elastic regime, averaged over 75 points
 INCONEL_718_nu = 0.321 # found from DIC measurements in the elastic regime, averaged over 75 points
 INCONEL_718DP_Yield = 940e6 # macroscopic yield around this value
-INCONEL_718_SCHMID_TENSOR_LIST = [np.load(os.path.join(sys.argv[0], 'analysis/inconel_718_schmid_tensors.npy'))]
+INCONEL_718_SCHMID_TENSOR_LIST = [np.load(os.path.join(os.path.dirname(__file__), 'analysis/inconel_718_schmid_tensors.npy'))]
 
 # *****************************************************************************
 # FUNCTION DECLARATION AND IMPLEMENTATION
@@ -964,6 +964,49 @@ def plot_strength_curve(tau_star, w_tau, macro_strain=None, plot_color='blue'):
     plt.plot(strain_fine,interp_tau_star-interp_w_tau,'k--',linewidth=2)
     
     plt.grid()
+
+    
+def init_correct_strain_for_vertical_beam_variation(grains_out):
+    '''
+    Purpose: correcting for vertical variation in beam energy based on the 
+    initial scan
+
+    Parameters
+    ----------
+    grains_out : numpy array (n x 21)
+        standard data from hexrd grains.out file loaded as numpy array.
+
+    Returns
+    -------
+    grains_out : numpy array (n x 21)
+        standard data from hexrd grains.out file loaded as numpy array, with
+        normal strains corrected for variation in vertial beam variation
+    p : tuple (2 x 1)
+        polynomial fitted paramters for vertial beam variation of strain.
+
+    '''
+
+    y_pos = grains_out[:, 7] # old x
+    hydrostatic_strain = np.sum(grains_out[:, 15:18], axis=1) / 3.0 # old y
+    p =  np.polyfit(y_pos, hydrostatic_strain, 1) #polynomial fit of gradient p[0] will be the slope p[1] the intercept
+
+    #plot of old values, polyfit
+    fig, ax = plt.subplots()
+    ax.plot(y_pos, hydrostatic_strain,'gx', label='old')
+    ax.plot(np.unique(y_pos), np.poly1d(np.polyfit(y_pos, hydrostatic_strain, 1))(np.unique(y_pos)),'g-',label='polyfit')
+    plt.xlabel ('t_vec_c [y]')
+    plt.ylabel ('avg_vol_strain')
+
+    #updating hydrostatic_strain to corrected values
+    hydrostatic_strain = hydrostatic_strain - p[0] * y_pos - p[1]
+
+    #add corrected values to plot
+    ax.plot(y_pos, hydrostatic_strain, 'bo', label='corrected')
+    ax.legend(loc='lower right')
+    
+    # usage of correction as
+    grains_out[:, 15:18] = grains_out[:, 15:18] - np.tile((p[0] * grains_out[:, 7] + p[1]), (3,1)).T
+    return grains_out, p
     
 # *****************************************************************************
 # TESTING
@@ -977,10 +1020,10 @@ if __name__ == '__main__':
     macro_strain = [0.2e-3, 0.35e-3, 0.54e-3, 0.73e-3] # epsilon_yy
     macro_stress = [402, 700, 953, 1020] # MPa, sigma_yy
     
-    init_grain_mat_list = [np.loadtxt(os.path.join(sys.argv[0], 'analysis/combined_grains_c0_1.out')),
-                           np.loadtxt(os.path.join(sys.argv[0], 'analysis/combined_grains_c0_2.out')),
-                           np.loadtxt(os.path.join(sys.argv[0], 'analysis/combined_grains_c0_3.out')),
-                           np.loadtxt(os.path.join(sys.argv[0], 'analysis/combined_grains_c1_1.out'))]
+    init_grain_mat_list = [np.loadtxt(os.path.join(os.path.dirname(__file__), 'analysis/combined_grains_c0_1.out')),
+                           np.loadtxt(os.path.join(os.path.dirname(__file__), 'analysis/combined_grains_c0_2.out')),
+                           np.loadtxt(os.path.join(os.path.dirname(__file__), 'analysis/combined_grains_c0_3.out')),
+                           np.loadtxt(os.path.join(os.path.dirname(__file__), 'analysis/combined_grains_c1_1.out'))]
     grain_mat_list = []
     for grain_mat in init_grain_mat_list:
         ind_thresh = np.where((grain_mat[:, 1] >= comp_thresh) & (grain_mat[:, 2] <= chi2_thresh))
@@ -988,7 +1031,7 @@ if __name__ == '__main__':
     
     test_schmid_tesnors = False
     if test_schmid_tesnors:
-        cfg = os.path.join(sys.argv[0], 'example_config.yml')
+        cfg = os.path.join(os.path.dirname(__file__), 'example_config.yml')
         schmid_tensors = gen_schmid_tensors_from_cfg(cfg, np.array([[1, 1, 0]]).T, np.array([[1, 1, 1]]).T)
     
     test_strength_extract = True
@@ -1055,7 +1098,12 @@ def voigt_stress_vt2_3d(v):
     return np.array([[v[:,0], v[:,5], v[:,4]],
                     [v[:,5], v[:,1], v[:,3]],
                     [v[:,4], v[:,3], v[:,2]]]).T
-    
+def voigt_strain_vt2_3d(v):
+    return np.array([[v[:,0], v[:,5] / 2, v[:,4] / 2],
+                    [v[:,5] / 2, v[:,1], v[:,3] / 2],
+                    [v[:,4] / 2, v[:,3] / 2, v[:,2] / 2]]).T
+def voigt_stress_t2v_3d(t):
+    return np.atleast_2d([t[:,0,0], t[:,1,1], t[:,2,2], t[:,1,2], t[:,0,2], t[:,0,1]])
 
 def calc_stress_from_strain_samp(gr_strain_samp_t, gr_ori_rot_mat, SX_STIFF):
     '''

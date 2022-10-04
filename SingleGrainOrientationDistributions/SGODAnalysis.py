@@ -25,6 +25,9 @@ import matplotlib.colors as plt_colors
 #from matplotlib.gridspec import GridSpec
 from mpl_toolkits.mplot3d import Axes3D
 
+import seaborn as sns
+import pandas as pd
+
 from scipy.stats import gaussian_kde
 #from scipy.optimize import nnls
 
@@ -137,10 +140,10 @@ def plot_grain_dsgod(grain_rod, grain_odf=None, reverse_map=False,
         z = (i + 2) % 3
         
         # estimate 2D histograim with kernel density
-        step = np.abs(grain_rod[:, x].min() - grain_rod[:, x].max())/1.8 #0.1
+        step = np.abs(grain_rod[:, x].min() - grain_rod[:, x].max()) / 0.8 #0.1
         xmin, ymin = grain_rod[:, x].mean(axis=0)-step, grain_rod[:, y].mean(axis=0)-step
         xmax, ymax = grain_rod[:, x].mean(axis=0)+step, grain_rod[:, y].mean(axis=0)+step
-        n = 75j # default is 50
+        n = 50j # default is 50
         xi, yi = np.mgrid[xmin:xmax:n, ymin:ymax:n]
         coords = np.vstack([item.ravel() for item in [xi, yi]])
         kde = gaussian_kde(grain_rod[:, [x,y]].T, weights=grain_odf)
@@ -153,10 +156,10 @@ def plot_grain_dsgod(grain_rod, grain_odf=None, reverse_map=False,
         edge2_mesh = yi
         
         # set color mapping
-        vmin = np.median(density)
+        vmin = np.mean(density) / 10
         vmax = np.max(density)
         
-        lim_step = 0.1
+        lim_step = 0.02
         c_norm = plt_colors.Normalize(vmin=vmin, vmax=vmax)
         if reverse_map:
             c_norm = plt_colors.Normalize(vmin=-vmax, vmax=-vmin)
@@ -176,7 +179,7 @@ def plot_grain_dsgod(grain_rod, grain_odf=None, reverse_map=False,
             p = ori_ax.plot_surface(edge2_mesh, flat_pos_3, edge1_mesh, facecolors=normalized_h_map, rstride=1, cstride=1, shade=False)
            
     # label axis and show
-    lp = 20
+    lp = 50
     ori_ax.set_xlabel('$r_{x}$', rotation=0, labelpad=lp)
     ori_ax.set_ylabel('$r_{y}$', rotation=0, labelpad=lp)
     ori_ax.set_zlabel('$r_{z}$', rotation=0, labelpad=lp)
@@ -339,11 +342,11 @@ def calc_misorient_moments(grain_mis_quat, grain_odf=None, norm_regularizer=0):
     default_num = 37
     
     if num_ori < 2:
-        print('WARNING: Number of orientation (%i) is low, no HOM calculations!' %(num_ori))
+        #print('WARNING: Number of orientation (%i) is low, no HOM calculations!' %(num_ori))
         pass
     else:
-        if num_ori < default_num:
-            print('WARNING: Number of orientation (%i) is low for HOM clculations!' %(num_ori))
+        # if num_ori < default_num:
+        #     print('WARNING: Number of orientation (%i) is low for HOM clculations!' %(num_ori))
         
         # convert misorienation quaternions to angle-axis rep (both methods equal)
         '''
@@ -428,7 +431,7 @@ def animate_dsgods_rod(grain_rod_list, grain_odf_list=None, labels_list=None,
     # plot DSGOD
     [fig, ori_ax] = plot_grain_dsgod(grain_rod_list[0], grain_odf=grain_odf_list[0], reverse_map=False, 
                      just_faces=False, no_axis=False, cmap=plt.cm.viridis_r,
-                     scatter_size=100, fig=fig, ori_ax =ori_ax)
+                     scatter_size=50, fig=fig, ori_ax =ori_ax)
     fig.suptitle('Time Step: %s' %(labels_list[0]))
     
     # set limits
@@ -481,10 +484,185 @@ def update_animate_dsgods_rod(i, grain_rod_list, grain_odf_list, labels_list, or
       
     [fig, ori_ax] = plot_grain_dsgod(grain_rod_list[i], grain_odf=grain_odf_list[i], reverse_map=False, 
                      just_faces=False, no_axis=False, cmap=plt.cm.viridis_r,
-                     scatter_size=100, fig=fig, ori_ax =ori_ax)
+                     scatter_size=50, fig=fig, ori_ax =ori_ax)
     fig.suptitle('Time Step: %s' %(labels_list[i]))
 
     return ori_ax,
+
+
+def moments_plotting(col_x, col_y, df, col_k='kind', 
+                     color_list=['#D81B60', '#1E88E5', '#FFC107', '#004D40'], 
+                     marker_list=['o', '^', 's', 'd'], scatter_alpha=.65, 
+                     do_global=False, x_lim=None, y_lim=None, 
+                     x_bins=25, y_bins=25, hatch_list=['//', 'xx', '--', '..'],
+                     fs=14):
+    '''
+    Purpose: scatter plot and histogram plots of the moments for a collection 
+       of DSGODs
+
+    Parameters
+    ----------
+    col_x : string
+        name of the pandas X column for plotting
+    col_y : string
+        name of the pandas Y column for plotting
+    df : pandas dataframe
+        collection of moments data for plotting
+    col_k : string 
+        name of the pandas grouping kind for plotting
+    color_list : list of hex code colors
+        list of colors for plotting different moment datasets 
+        (default to 4 colorblind friendly colors)
+    marker_list : list of markers styles for scatter plots
+        list of markers styles for scatter plots for plotting different 
+        moment datasets 
+    scatter_alpha : float
+        transparency of the scatter points
+    do_global : boolean
+        boolean for plotting global histograms for all datasets
+    x_lim : 1 x 2 list or numpy array
+        limits for the x-axis
+    y_lim : 1 x 2 list or numpy array
+        limits for the y-axis
+    x_bins : int
+        number of histogram bins along the x-axis
+    y_bins : int
+        number of histogram bins along the y-axis
+    hatch_list : list of hatch styles for histograms
+        list of hatch styles for histograms for plotting different moment
+        datasets
+    fs : int
+        font size for legend and axes
+
+    Returns
+    -------
+    fig_ax : seaborn figure axes
+        returns the figure for additional adjustments
+        
+    Notes
+    -----
+    None
+    '''
+    
+    def colored_scatter(x, y, c=None, marker='.'):
+        def scatter(*args, **kwargs):
+            args = (x, y)
+            if c is not None:
+                kwargs['c'] = c
+            kwargs['alpha'] = scatter_alpha
+            kwargs['s'] = 125
+            kwargs['marker'] = marker
+            plt.scatter(*args, **kwargs)
+
+        return scatter
+    
+    if x_lim is not None:
+        x_bins = np.arange(x_lim[0], x_lim[1], (x_lim[1]-x_lim[0])/x_bins)
+    if y_lim is not None:
+        y_bins = np.arange(y_lim[0], y_lim[1], (y_lim[1]-y_lim[0])/y_bins)
+    
+    fig_ax = sns.JointGrid(
+        x=col_x,
+        y=col_y,
+        data=df,
+        xlim=x_lim,
+        ylim=y_lim,
+        height=5,
+    )
+    color = None
+    legends=[]
+    linestyle_list = ['-', (0, (1, 1)), (0, (3, 1, 1, 1)), '..']
+    i = 0
+    
+    col_x_val = []
+    col_y_val = []
+    
+    for name, df_group in df.groupby(col_k, sort=False):
+        legends.append(name)
+        if color_list is not None:
+            color=color_list[i]
+        marker=marker_list[i]
+        fig_ax.plot_joint(
+            colored_scatter(df_group[col_x],df_group[col_y],color,marker),
+        )
+        
+        # gd1 = sns.distplot(
+        #     df_group[col_x].values,
+        #     ax=g.ax_marg_x,
+        #     color=color,
+        #     bins=x_bins,
+        #     hist=True,
+        #     norm_hist=False,
+        #     kde=False,
+        #     hist_kws={'histtype':'step', 'linewidth':3, 'color':color, 'linestyle':linestyle_list[i]}
+        #     #hist_kws={'hatch':hatch_list[i], 'edgecolor':'k', 'stacked':True, 'histtype':'step', 'linewidth':3, 'color':color}
+        # )
+        # gd2 = sns.distplot(
+        #     df_group[col_y].values,
+        #     ax=g.ax_marg_y,
+        #     color=color,            
+        #     vertical=True,
+        #     bins=y_bins,
+        #     hist=True,
+        #     norm_hist=False,
+        #     kde=False,
+        #     hist_kws={'histtype':'step', 'linewidth':3, 'color':color, 'linestyle':linestyle_list[i]}
+        # )
+        
+        col_x_val.append(df_group[col_x].values)
+        col_y_val.append(df_group[col_y].values)
+        
+        i += 1
+    
+    gd1 = fig_ax.ax_marg_x.hist(
+            col_x_val,
+            color=color_list[:i],
+            bins=x_bins,
+            orientation='vertical',
+            rwidth=0.95
+        )
+    gd2 = fig_ax.ax_marg_y.hist(
+            col_y_val,
+            color=color_list[:i],   
+            bins=y_bins,
+            orientation='horizontal',
+            rwidth=0.95
+        )
+        
+    fig_ax.ax_marg_y.set_xscale('log')
+    fig_ax.ax_marg_x.set_yscale('log')
+    fig_ax.ax_marg_y.set_xticks([])
+    fig_ax.ax_marg_x.set_yticks([])
+        
+        
+    if do_global:
+        # Do also global Hist:
+        sns.distplot(
+            df[col_x].values,
+            ax=fig_ax.ax_marg_x,
+            color='grey',
+            bins=x_bins
+        )
+        sns.distplot(
+            df[col_y].values.ravel(),
+            ax=fig_ax.ax_marg_y,
+            color='grey',
+            vertical=True,
+            bins=y_bins
+        )
+    
+    fig_ax.ax_joint.set_xlabel(col_x, fontsize=fs)
+    fig_ax.ax_joint.set_ylabel(col_y, fontsize=fs)
+    new_x_ticks = fig_ax.ax_joint.get_xticks()
+    x_ticks = []
+    for k in range(len(new_x_ticks)):
+        x_ticks.append('%0.1f' %(new_x_ticks[k]))
+    fig_ax.ax_joint.set_xticklabels(x_ticks, size=fs)
+    fig_ax.ax_joint.set_yticklabels(fig_ax.ax_joint.get_yticks(), size=fs)
+    plt.legend(legends, fontsize=fs, loc='best')
+    
+    return fig_ax
+    
 
 # *****************************************************************************
 # EXPERIEMENTAL FUNCTION DECLARATION AND IMPLEMENTATION
@@ -547,7 +725,7 @@ def process_dsgod_file(dsgod_npz_dir, comp_thresh=0.85, inten_thresh=0, do_avg_o
     grain_inten_arr = grain_goe_info['dsgod_box_inten_list'].astype(np.int32)
     grain_filter_arr = grain_goe_info['dsgod_box_filter_list'].astype(np.int8)
     grain_avg_expmap = grain_goe_info['dsgod_avg_expmap']
-    grain_avg_quat = hexrd_rot.quatOfExpMap(grain_avg_expmap.T)
+    grain_avg_quat = np.atleast_2d(hexrd_rot.quatOfExpMap(grain_avg_expmap.T)).T
     
     # transform orientation to Rodrigues vectors
     grain_quat = np.reshape(grain_quat, [grain_quat.shape[1], grain_quat.shape[2]])
@@ -576,6 +754,7 @@ def process_dsgod_file(dsgod_npz_dir, comp_thresh=0.85, inten_thresh=0, do_avg_o
             if do_avg_ori:
                 # find nearest non-zero intenisty closest to avg orient as DSGOD group
                 nnz_inten_quats = grain_quat[:, grain_inten > inten_thresh]
+                
                 grain_avg_quat_norms = np.linalg.norm(nnz_inten_quats - grain_avg_quat, axis=0)
                 avg_ori_quat = nnz_inten_quats[:, np.where(grain_avg_quat_norms == np.min(grain_avg_quat_norms))[0]]
                 avg_ori_ind = np.where((grain_quat == avg_ori_quat).all(axis=0))[0]
@@ -605,7 +784,7 @@ def process_dsgod_file(dsgod_npz_dir, comp_thresh=0.85, inten_thresh=0, do_avg_o
         
         # DSGOD WORK **************************************************************
         sum_grain_inten = np.sum(thresh_grain_inten)
-        print(sum_grain_inten)
+        #print(sum_grain_inten)
         
         if sum_grain_inten > 0:
             grain_odf = thresh_grain_inten / sum_grain_inten.astype(float)
@@ -637,10 +816,20 @@ def process_dsgod_file(dsgod_npz_dir, comp_thresh=0.85, inten_thresh=0, do_avg_o
     # RETURN ******************************************************************
     if save:
         dsgod_npz_save_dir = dsgod_npz_dir.split('.npz')[0]
-        np.savez(dsgod_npz_save_dir + 'processed', dsgod_box_shape=grain_goe_box,
+        # np.savez(dsgod_npz_save_dir + '_processed', dsgod_box_shape=grain_goe_box,
+        #           dsgod_avg_expmap=grain_avg_expmap, dsgod_avg_quat=grain_avg_quat,
+        #           dsgod_box_quat=grain_quat, dsgod_box_mis_quat=grain_mis_quat,
+        #           dsgod_box_dsgod=grain_odf, dsgod_comp_thresh=comp_thresh)
+        grain_quat = grain_quat[:, grain_odf > 0].T
+        grain_mis_quat = grain_mis_quat[:, grain_odf > 0].T
+        grain_odf = grain_odf[grain_odf > 0]
+        
+        comp_str = str(comp_thresh).replace('.', '_')
+        np.savez(dsgod_npz_save_dir + '_%s_reduced' %(comp_str), dsgod_box_shape=grain_goe_box,
                   dsgod_avg_expmap=grain_avg_expmap, dsgod_avg_quat=grain_avg_quat,
                   dsgod_box_quat=grain_quat, dsgod_box_mis_quat=grain_mis_quat,
-                  dsgod_box_dsgod=grain_odf, dsgod_comp_thresh=comp_thresh)
+                  dsgod_box_dsgod=grain_odf, dsgod_sum_inten=sum_grain_inten,
+                  dsgod_comp_thresh=comp_thresh)
     
     return [grain_quat, grain_mis_quat, grain_odf]
 

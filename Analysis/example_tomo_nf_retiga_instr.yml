@@ -1,0 +1,17 @@
+detector:
+  distortion:
+    function_name: None
+    parameters: None
+  id: retiga
+  pixels:
+    columns: 2048
+    rows: 2048
+    size: [0.00148, 0.00148]
+  saturation_level: 4096
+  transform:
+    t_vec_d: [-0.006, -0.0, -9.31] #[-0.005 to -0.007, -0.0, -9.3 to -9.33]
+    tilt_angles: [0.0, 0.0, -0.015] #[0.0, 0.0, -0.015]
+oscillation_stage:
+  chi: -0.0019979215043228723 #-0.0014967592933686962 #-0.0019979215043228723
+  t_vec_s: [0.0, 0.0, 0.0]
+

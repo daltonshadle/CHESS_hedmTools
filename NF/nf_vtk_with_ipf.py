@@ -6,381 +6,204 @@ Created on Mon May 10 17:35:18 2021
 @author: djs522
 """
 
-import pymicro
+# *****************************************************************************
+#%% IMPORTS
+# *****************************************************************************
 
-from pymicro.crystal.microstructure import Orientation, Grain, Microstructure
-
-import sys
-
-import time
+from pymicro.crystal.microstructure import Orientation
 
 import numpy as np
 
-import matplotlib.pyplot as plt
-
-import os
-
 import hexrd.rotations as hexrd_rot
 
-from scipy import ndimage
 
+'''
+in grain map to tesr, save original grain map ids to access orientations,
+new grain ids can be saved as a grain map for tesr (ids 1-n, no 0),
+can evnetually get smart and do a check or have a key to transfer old to new
+'''
 
-#%%
-scan_num = 30
-path = '/media/djs522/djs522_nov2020/chess_2020_11/ss718-1/nf_analysis/output/'
-stem = 'new_ss718_scan%i_out' %(scan_num)
-stem = 'ss718_total_stitch_with_greyclose'
-output_stem = stem + '_grain_map_data.npz'
+# *****************************************************************************
+#%% FUNCTION
+# *****************************************************************************
 
-# path = '/media/djs522/djs522_nov2020/chess_2020_11/dp718-1/nf_analysis/output/packaged_nf_final/'
-# output_stem = 'ff_final_dp718_scan18_1.70_5.00_grain_map_data.npz'
+def add_ipf_to_nf_vtk(path_to_nf_npz, ipf_axis=np.array([0.0, 1.0, 0.0]),
+                      GRAIN_MAP_ID_KEY='grain_map', ORIENTATION_KEY='ori_list',
+                      GRAIN_MAP_ORI_KEY='grain_map', CONFIDENCE_KEY='confidence_map',
+                      X_KEY='Xs', Y_KEY='Ys', Z_KEY='Zs'):
+    '''
 
-grain_map_data = np.load(os.path.join(path, output_stem))
-exp_maps = grain_map_data['ori_list']
-grain_map = grain_map_data['grain_map']
-#grain_ids = grain_map_data['id_remap']
+    Parameters
+    ----------
+    path_to_nf_npz : TYPE
+        DESCRIPTION.
+    ipf_axis : TYPE, optional
+        DESCRIPTION. The default is np.array([0.0, 1.0, 0.0]).
+    GRAIN_MAP_ID_KEY : TYPE, optional
+        DESCRIPTION. The default is 'grain_map'.
+    ORIENTATION_KEY : TYPE, optional
+        DESCRIPTION. The default is 'ori_list'.
+    GRAIN_MAP_ORI_KEY : TYPE, optional
+        DESCRIPTION. The default is 'grain_map'.
+    CONFIDENCE_KEY : TYPE, optional
+        DESCRIPTION. The default is 'confidence_map'.
+    X_KEY : TYPE, optional
+        DESCRIPTION. The default is 'Xs'.
+    Y_KEY : TYPE, optional
+        DESCRIPTION. The default is 'Ys'.
+    Z_KEY : TYPE, optional
+        DESCRIPTION. The default is 'Zs'.
 
-grain_ids = np.unique(grain_map)
-grain_ids_to_idx = np.vstack([grain_ids, np.arange(grain_ids.size)]).T #np.arange(grain_ids.size)]).T
+    Raises
+    ------
+    ValueError
+        DESCRIPTION.
 
-
-#grain_ids_to_idx = np.vstack([grain_ids, np.arange(exp_maps.shape[0])]).T
-
-
-#%%
-rot_mats = hexrd_rot.rotMatOfExpMap_opt(exp_maps.T)
-
-pymicro_obj = Microstructure(name='test')
-print(pymicro_obj.get_number_of_grains())
-
-
-print(rot_mats.shape)
-
-#%%
-pymicro_oris = []
-ipf_colors = []
-
-for ori in range(rot_mats.shape[0]):
-    temp_ori = Orientation(rot_mats[ori, :, :])
+    Returns
+    -------
+    None.
     
-    pymicro_oris.append(temp_ori)
-    ipf_colors.append(temp_ori.get_ipf_colour(axis=np.array([0., 1., 0.])))
+    Notes
+    -----
+    Assumes position indexing [X, Y, Z] or meshgrid(indexing='ij')
+
+    '''
+    # prepare output stem
+    output_stem = path_to_nf_npz.replace('.npz', '_with_ipf.vtk')
     
-ipf_color_arr = np.array(ipf_colors)
-print(ipf_color_arr.shape)
-
-#%%
-data_location = path
-data_stems = [stem]
-output_stem = data_stems[0]
-top_down=True
-vol_spacing = 0.005
-
-num_scans=len(data_stems)
+    # get data, find path stem
+    grain_map_data = np.load(path_to_nf_npz)
+    exp_maps = grain_map_data[ORIENTATION_KEY]
+    grain_map_ori = grain_map_data[GRAIN_MAP_ORI_KEY]
+    grain_map_shape = grain_map_ori.shape
     
-confidence_maps=[None]*num_scans
-grain_maps=[None]*num_scans
-Xss=[None]*num_scans
-Yss=[None]*num_scans
-Zss=[None]*num_scans
-
-
-for ii in np.arange(num_scans):
-    print('Loading Volume %d ....'%(ii))
-    conf_data = np.load(os.path.join(data_location,data_stems[ii]+'_grain_map_data.npz'))
+    # extract grain ids, used to index orientations from ori_list
+    grain_ori_ids = np.unique(grain_map_ori)
     
-    confidence_maps[ii]=conf_data['confidence_map']
-    grain_maps[ii]=conf_data['grain_map']
-    Xss[ii]=conf_data['Xs']
-    Yss[ii]=conf_data['Ys']
-    Zss[ii]=conf_data['Zs']
-     
-#assumes all volumes to be the same size
-num_layers=grain_maps[0].shape[0]
+    # check if GRAIN_MAP_ID_KEY and GRAIN_MAP_ORI_KEY are the same
+    diff_grain_map_key_check = GRAIN_MAP_ID_KEY != GRAIN_MAP_ORI_KEY
+    
+    # check if we're going to have an index error max_id_check == True is index error
+    max_id_check = (grain_ori_ids.max() >= exp_maps.shape[0])
+    if max_id_check:
+        raise ValueError('Grain IDs cannot be used to index orientations!')
+    
+    # get ipf colors for each orientation using pymicro
+    rot_mats = hexrd_rot.rotMatOfExpMap_opt(exp_maps.T)
+    ipf_colors = []
 
-total_layers=num_layers*num_scans
-
-num_rows=grain_maps[0].shape[1]
-num_cols=grain_maps[0].shape[2]
-
-grain_map_stitched=np.zeros((total_layers,num_rows,num_cols))
-confidence_stitched=np.zeros((total_layers,num_rows,num_cols))
-Xs_stitched=np.zeros((total_layers,num_rows,num_cols))
-Ys_stitched=np.zeros((total_layers,num_rows,num_cols))
-Zs_stitched=np.zeros((total_layers,num_rows,num_cols))
-
-
-for i in np.arange(num_scans):
-    if top_down==True:
-        grain_map_stitched[((i)*num_layers):((i)*num_layers+num_layers),:,:]=grain_maps[num_scans-1-i]
-        confidence_stitched[((i)*num_layers):((i)*num_layers+num_layers),:,:]=confidence_maps[num_scans-1-i]
-        Xs_stitched[((i)*num_layers):((i)*num_layers+num_layers),:,:]=Xss[num_scans-1-i]
-        Zs_stitched[((i)*num_layers):((i)*num_layers+num_layers),:,:]=Zss[num_scans-1-i]
-        Ys_stitched[((i)*num_layers):((i)*num_layers+num_layers),:,:]=Yss[num_scans-1-i]+vol_spacing*i    
-    else:
+    for ori in range(rot_mats.shape[0]):
+        temp_ori = Orientation(rot_mats[ori, :, :])
+        ipf_colors.append(temp_ori.get_ipf_colour(axis=ipf_axis))
         
-        grain_map_stitched[((i)*num_layers):((i)*num_layers+num_layers),:,:]=grain_maps[i]
-        confidence_stitched[((i)*num_layers):((i)*num_layers+num_layers),:,:]=confidence_maps[i]
-        Xs_stitched[((i)*num_layers):((i)*num_layers+num_layers),:,:]=Xss[i]
-        Zs_stitched[((i)*num_layers):((i)*num_layers+num_layers),:,:]=Zss[i]
-        Ys_stitched[((i)*num_layers):((i)*num_layers+num_layers),:,:]=Yss[i]+vol_spacing*i
+    ipf_color_arr = np.array(ipf_colors)
 
-                
-
-
-print('Writing VTK data...')
-# VTK Dump 
-Xslist=Xs_stitched[:,:,:].ravel()
-Yslist=Ys_stitched[:,:,:].ravel()
-Zslist=Zs_stitched[:,:,:].ravel()
-
-grainlist=grain_map_stitched[:,:,:].ravel()
-conflist=confidence_stitched[:,:,:].ravel()
-
-num_pts=Xslist.shape[0]
-num_cells=(total_layers-1)*(num_rows-1)*(num_cols-1)
-
-f = open(os.path.join(data_location, output_stem +'_stitch_with_ipf.vtk'), 'w')
-
-
-f.write('# vtk DataFile Version 3.0\n')
-f.write('grainmap Data\n')
-f.write('ASCII\n')
-f.write('DATASET UNSTRUCTURED_GRID\n')
-f.write('POINTS %d double\n' % (num_pts))
-
-for i in np.arange(num_pts):
-    f.write('%e %e %e \n' %(Xslist[i],Yslist[i],Zslist[i]))
-
-scale2=num_cols*num_rows
-scale1=num_cols    
+    # prepare data to write to vtk file
+    Xslist = grain_map_data[X_KEY].ravel()
+    Yslist = grain_map_data[Y_KEY].ravel()
+    Zslist = grain_map_data[Z_KEY].ravel() # negative to match Neper for now TODO
+    #print(np.vstack([Xslist, Yslist, Zslist]).T)
+    #print(Xslist.size)
     
-f.write('CELLS %d %d\n' % (num_cells, 9*num_cells))   
-for k in np.arange(Xs_stitched.shape[0]-1):
-    for j in np.arange(Xs_stitched.shape[1]-1):
-        for i in np.arange(Xs_stitched.shape[2]-1):
-            base=scale2*k+scale1*j+i    
-            p1=base
-            p2=base+1
-            p3=base+1+scale1
-            p4=base+scale1
-            p5=base+scale2
-            p6=base+scale2+1
-            p7=base+scale2+scale1+1
-            p8=base+scale2+scale1
+    grainorilist = grain_map_ori.ravel()
+    conflist = grain_map_data[CONFIDENCE_KEY].ravel()
+    if diff_grain_map_key_check:
+        grainidlist = grain_map_data[GRAIN_MAP_ID_KEY].ravel()
+        
+    num_x = grain_map_shape[0]
+    num_y = grain_map_shape[1]
+    num_z = grain_map_shape[2]
+    #print(grain_map_ori.shape)
+    
+    num_pts = Xslist.shape[0]
+    num_cells = (num_x-1)*(num_y-1)*(num_z-1)
+    
+    print('Writing VTK data...')
+    # VTK Dump 
+    with open(output_stem, 'w') as f:
+        f.write('# vtk DataFile Version 3.0\n')
+        f.write('grainmap Data\n')
+        f.write('ASCII\n')
+        f.write('DATASET UNSTRUCTURED_GRID\n')
+        f.write('POINTS %d double\n' % (num_pts))
+    
+        for i in np.arange(num_pts):
+            f.write('%e %e %e \n' %(Xslist[i], Yslist[i], Zslist[i]))
+    
+        scale2 = num_z*num_y
+        scale1 = num_z
+        #print(scale1, scale2)
+        
+        f.write('CELLS %d %d\n' % (num_cells, 9*num_cells))   
+        # need to check indexing for these guys, old [Y,X,Z] vs new [X,Y,Z] 
+        for k in np.arange(num_x-1):
+            for j in np.arange(num_y-1):
+                for i in np.arange(num_z-1):
+                    base=scale2*k+scale1*j+i  
+                    '''
+                    p1=base
+                    p2=base+1
+                    p3=base+1+scale1
+                    p4=base+scale1
+                    p5=base+scale2
+                    p6=base+scale2+1
+                    p7=base+scale2+scale1+1
+                    p8=base+scale2+scale1
+                    '''
+                    
+                    p1 = base
+                    p2 = base+scale2
+                    p3 = base+scale2+scale1
+                    p4 = base+scale1
+                    p5 = base + 1
+                    p6 = base+scale2+1
+                    p7 = base+scale2+scale1+1
+                    p8 = base+1+scale1
+                    
+                    
+                    
+                    if p7 >= Xslist.size:
+                        print("INDEX ERROR: %i -- %i, %i, %i" %(p7, i, j, k))
+                    
+                    # if k == 0 and j == 0 and i == 0:
+                    #     print(p1,p2,p3,p4,p5,p6,p7,p8)
+                    #     l = [p1,p2,p3,p4,p5,p6,p7,p8]
+                    #     for t in l:
+                    #         print(Xslist[t.astype(int)], Yslist[t.astype(int)], Zslist[t.astype(int)])
+                    f.write('8 %d %d %d %d %d %d %d %d \n' %(p1,p2,p3,p4,p5,p6,p7,p8))    
             
-            f.write('8 %d %d %d %d %d %d %d %d \n' %(p1,p2,p3,p4,p5,p6,p7,p8))    
-    
-    
-f.write('CELL_TYPES %d \n' % (num_cells))    
-for i in np.arange(num_cells):
-    f.write('12 \n')  
-
-f.write('POINT_DATA %d \n' % (num_pts))
-f.write('SCALARS grain_id int \n')  
-f.write('LOOKUP_TABLE default \n')      
-for i in np.arange(num_pts):
-    f.write('%d \n' %(grainlist[i]))    
-    
-#f.write('POINT_DATA %d \n' % (num_pts))
-f.write('SCALARS ipf_color float 3 \n')  
-f.write('LOOKUP_TABLE default \n')    
-f.write('COLOR_SCALARS ipf_color 3 \n') 
-for i in np.arange(num_pts):
-    if grainlist[i] < 0:
-        temp_ipf = [1.0, 1.0, 1.0]
-    else:
-        ipf_idx = grain_ids_to_idx[(grain_ids_to_idx[:, 0] == grainlist[i].astype(int)), 1][0].astype(int)
-        temp_ipf = ipf_color_arr[ipf_idx, :]
-    f.write('%e %e %e \n' %(temp_ipf[0], temp_ipf[1], temp_ipf[2]))  
-
-f.write('FIELD FieldData 1 \n' )
-f.write('confidence 1 %d float \n' % (num_pts))       
-for i in np.arange(num_pts):
-    f.write('%e \n' %(conflist[i]))  
-
-f.close()
-
-#%%
-
-data_location = path
-data_stems = [stem]
-output_stem = data_stems[0]
-top_down=True
-vol_spacing = 0.005
-
-num_scans=len(data_stems)
-
-confidence_maps=[None]*num_scans
-grain_maps=[None]*num_scans
-Xss=[None]*num_scans
-Yss=[None]*num_scans
-Zss=[None]*num_scans
-top_n_conf=[None]*num_scans
-top_n_id=[None]*num_scans
-
-
-for ii in np.arange(num_scans):
-    print('Loading Volume %d ....'%(ii))
-    conf_data=np.load(os.path.join(data_location,data_stems[ii]+'_top_n_grain_map_data.npz'))
-    
-    confidence_maps[ii]=conf_data['confidence_map']
-    grain_maps[ii]=conf_data['grain_map']
-    Xss[ii]=conf_data['Xs']
-    Yss[ii]=conf_data['Ys']
-    Zss[ii]=conf_data['Zs']
-    top_n_conf[ii]=conf_data['top_n_conf']
-    top_n_id[ii]=conf_data['top_n_id']
-     
-#assumes all volumes to be the same size
-num_layers=grain_maps[0].shape[0]
-
-total_layers=num_layers*num_scans
-
-num_rows=grain_maps[0].shape[1]
-num_cols=grain_maps[0].shape[2]
-
-grain_map_stitched=np.zeros((total_layers,num_rows,num_cols))
-confidence_stitched=np.zeros((total_layers,num_rows,num_cols))
-Xs_stitched=np.zeros((total_layers,num_rows,num_cols))
-Ys_stitched=np.zeros((total_layers,num_rows,num_cols))
-Zs_stitched=np.zeros((total_layers,num_rows,num_cols))
-top_n_conf_stitched=np.zeros((3,total_layers,num_rows,num_cols))
-top_n_id_stitched=np.zeros((3,total_layers,num_rows,num_cols))
-
-
-for i in np.arange(num_scans):
-    if top_down==True:
-        grain_map_stitched[((i)*num_layers):((i)*num_layers+num_layers),:,:]=grain_maps[num_scans-1-i]
-        confidence_stitched[((i)*num_layers):((i)*num_layers+num_layers),:,:]=confidence_maps[num_scans-1-i]
-        Xs_stitched[((i)*num_layers):((i)*num_layers+num_layers),:,:]=Xss[num_scans-1-i]
-        Zs_stitched[((i)*num_layers):((i)*num_layers+num_layers),:,:]=Zss[num_scans-1-i]
-        Ys_stitched[((i)*num_layers):((i)*num_layers+num_layers),:,:]=Yss[num_scans-1-i]+vol_spacing*i  
-        
-        top_n_conf_stitched[:,((i)*num_layers):((i)*num_layers+num_layers),:,:]=top_n_conf[num_scans-1-i]
-        top_n_id_stitched[:,((i)*num_layers):((i)*num_layers+num_layers),:,:]=top_n_id[num_scans-1-i]
-    else:
-        
-        grain_map_stitched[((i)*num_layers):((i)*num_layers+num_layers),:,:]=grain_maps[i]
-        confidence_stitched[((i)*num_layers):((i)*num_layers+num_layers),:,:]=confidence_maps[i]
-        Xs_stitched[((i)*num_layers):((i)*num_layers+num_layers),:,:]=Xss[i]
-        Zs_stitched[((i)*num_layers):((i)*num_layers+num_layers),:,:]=Zss[i]
-        Ys_stitched[((i)*num_layers):((i)*num_layers+num_layers),:,:]=Yss[i]+vol_spacing*i
-        
-        top_n_conf_stitched[:,((i)*num_layers):((i)*num_layers+num_layers),:,:]=top_n_conf[i]
-        top_n_id_stitched[:,((i)*num_layers):((i)*num_layers+num_layers),:,:]=top_n_id[i]
-
-                
-
-
-print('Writing VTK data...')
-# VTK Dump 
-Xslist=Xs_stitched[:,:,:].ravel()
-Yslist=Ys_stitched[:,:,:].ravel()
-Zslist=Zs_stitched[:,:,:].ravel()
-
-grainlist=grain_map_stitched[:,:,:].ravel()
-conflist=confidence_stitched[:,:,:].ravel()
-
-top_n_conf_stitched = np.reshape(top_n_conf_stitched, [3, total_layers*num_rows*num_cols])
-top_n_id_stitched = np.reshape(top_n_id_stitched, [3, total_layers*num_rows*num_cols])
-
-num_pts=Xslist.shape[0]
-num_cells=(total_layers-1)*(num_rows-1)*(num_cols-1)
-
-f = open(os.path.join(data_location, output_stem +'_top_n_stitch_with_ipf.vtk'), 'w')
-
-
-f.write('# vtk DataFile Version 3.0\n')
-f.write('grainmap Data\n')
-f.write('ASCII\n')
-f.write('DATASET UNSTRUCTURED_GRID\n')
-f.write('POINTS %d double\n' % (num_pts))
-
-for i in np.arange(num_pts):
-    f.write('%e %e %e \n' %(Xslist[i],Yslist[i],Zslist[i]))
-
-scale2=num_cols*num_rows
-scale1=num_cols    
-    
-f.write('CELLS %d %d\n' % (num_cells, 9*num_cells))   
-for k in np.arange(Xs_stitched.shape[0]-1):
-    for j in np.arange(Xs_stitched.shape[1]-1):
-        for i in np.arange(Xs_stitched.shape[2]-1):
-            base=scale2*k+scale1*j+i    
-            p1=base
-            p2=base+1
-            p3=base+1+scale1
-            p4=base+scale1
-            p5=base+scale2
-            p6=base+scale2+1
-            p7=base+scale2+scale1+1
-            p8=base+scale2+scale1
             
-            f.write('8 %d %d %d %d %d %d %d %d \n' %(p1,p2,p3,p4,p5,p6,p7,p8))    
+        f.write('CELL_TYPES %d \n' % (num_cells))    
+        for i in np.arange(num_cells):
+            f.write('12 \n')  
+        
+        
+        f.write('POINT_DATA %d \n' % (num_pts))
+        f.write('SCALARS grain_ori_id int \n')  
+        f.write('LOOKUP_TABLE default \n')      
+        for i in np.arange(num_pts):
+            f.write('%d \n' %(grainorilist[i]))    
+        
+        if diff_grain_map_key_check:
+            f.write('SCALARS grain_new_id int \n')  
+            f.write('LOOKUP_TABLE default \n')      
+            for i in np.arange(num_pts):
+                f.write('%d \n' %(grainidlist[i])) 
+        
+        f.write('SCALARS ipf_color float 3 \n')  
+        f.write('LOOKUP_TABLE default \n')    
+        f.write('COLOR_SCALARS ipf_color 3 \n') 
+        for i in np.arange(num_pts):
+            if grainorilist[i] < 0:
+                temp_ipf = [1.0, 1.0, 1.0]
+            else:
+                temp_ipf = ipf_color_arr[grainorilist[i].astype(int), :]
+            f.write('%e %e %e \n' %(temp_ipf[0], temp_ipf[1], temp_ipf[2]))  
     
-    
-f.write('CELL_TYPES %d \n' % (num_cells))    
-for i in np.arange(num_cells):
-    f.write('12 \n')    
-
-f.write('POINT_DATA %d \n' % (num_pts))
-f.write('SCALARS grain_id int \n')  
-f.write('LOOKUP_TABLE default \n')      
-for i in np.arange(num_pts):
-    f.write('%d \n' %(grainlist[i]))    
-
-f.write('SCALARS grain_id_2 int \n')  
-f.write('LOOKUP_TABLE default \n')      
-for i in np.arange(num_pts):
-    f.write('%d \n' %(top_n_id_stitched[1, i])) 
-    
-f.write('SCALARS grain_id_3 int \n')  
-f.write('LOOKUP_TABLE default \n')      
-for i in np.arange(num_pts):
-    f.write('%d \n' %(top_n_id_stitched[2, i])) 
-
-f.write('SCALARS confidence float \n')  
-f.write('LOOKUP_TABLE default \n')        
-for i in np.arange(num_pts):
-    f.write('%e \n' %(conflist[i]))  
-
-f.write('SCALARS confidence_2 float \n')  
-f.write('LOOKUP_TABLE default \n')       
-for i in np.arange(num_pts):
-    f.write('%e \n' %(top_n_conf_stitched[1, i])) 
-
-f.write('SCALARS confidence_3 float \n')  
-f.write('LOOKUP_TABLE default \n')        
-for i in np.arange(num_pts):
-    f.write('%e \n' %(top_n_conf_stitched[2, i])) 
-
-f.write('SCALARS ipf_color float 3 \n')  
-f.write('LOOKUP_TABLE default \n')    
-f.write('COLOR_SCALARS ipf_color 3 \n') 
-for i in np.arange(num_pts):
-    ipf_idx = grain_ids_to_idx[(grain_ids_to_idx[:, 0] == grainlist[i].astype(int)), 1][0].astype(int)
-    temp_ipf = ipf_color_arr[ipf_idx, :]
-    f.write('%e %e %e \n' %(temp_ipf[0], temp_ipf[1], temp_ipf[2]))  
-
-f.write('SCALARS ipf_color_2 float 3 \n')  
-f.write('LOOKUP_TABLE default \n')    
-f.write('COLOR_SCALARS ipf_color_2 3 \n') 
-for i in np.arange(num_pts):
-    ipf_idx = grain_ids_to_idx[(grain_ids_to_idx[:, 0] == top_n_id_stitched[1, i].astype(int)), 1][0].astype(int)
-    temp_ipf = ipf_color_arr[ipf_idx, :]
-    f.write('%e %e %e \n' %(temp_ipf[0], temp_ipf[1], temp_ipf[2])) 
-    
-f.write('SCALARS ipf_color_3 float 3 \n')  
-f.write('LOOKUP_TABLE default \n')    
-f.write('COLOR_SCALARS ipf_color_3 3 \n') 
-for i in np.arange(num_pts):
-    ipf_idx = grain_ids_to_idx[(grain_ids_to_idx[:, 0] == top_n_id_stitched[2, i].astype(int)), 1][0].astype(int)
-    temp_ipf = ipf_color_arr[ipf_idx, :]
-    f.write('%e %e %e \n' %(temp_ipf[0], temp_ipf[1], temp_ipf[2])) 
-
-f.close()
-
+        f.write('FIELD FieldData 1 \n' )
+        f.write('confidence 1 %d float \n' % (num_pts))       
+        for i in np.arange(num_pts):
+            f.write('%e \n' %(conflist[i]))  
 
 
 

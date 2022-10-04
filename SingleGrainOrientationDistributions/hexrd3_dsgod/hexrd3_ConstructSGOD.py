@@ -13,6 +13,7 @@ import numpy as np
 
 from hexrd import instrument
 from hexrd import imageseries
+from hexrd.imageseries.omega import OmegaImageSeries
 from hexrd.xrdutil import EtaOmeMaps
 from hexrd import config
 from hexrd import rotations
@@ -63,7 +64,7 @@ if __name__ == '__main__':
     parser.add_argument('--select_grain_ids', metavar='select_ids', nargs='?', default=None,
                         help="Path to .npy file with array of grain ids to construct", type=str)
     parser.add_argument('--eta_omega_map_path', metavar='eta_omega_map_path', nargs='?', default=None,
-                        help="Path to eta_omega_map file for constructing DSGOD", type=int)
+                        help="Path to eta_omega_map file for constructing DSGOD. Use GEN to generate eta_omega_map.", type=str)
 
     args = parser.parse_args()
     cfg_file = args.cfg_yml_file
@@ -91,7 +92,10 @@ if not os.path.exists(eta_ome_npz_save_dir):
 # initialize grain mat from grains.out
 grain_mat = np.loadtxt(scan_grains_out_dir)
 if select_grain_ids is not None:
-    good_ids = np.load(select_grain_ids).astype(int)
+    if ".txt" in select_grain_ids:
+        good_ids  = np.loadtxt(select_grain_ids).astype(int)
+    else:
+        good_ids = np.load(select_grain_ids).astype(int)
     grain_mat = grain_mat[good_ids, :]
 
 # LOAD YML FILE
@@ -143,6 +147,30 @@ grain_mat_ids = grain_mat[:, 0]
 grain_mat_ids_list = list(np.array(grain_mat_ids).astype('int').T)
 num_grains = grain_mat_ids.size
 
+if eta_omega_map_path in "GEN":
+    # generate eta omega map for file
+    print("Generating Eta-Omega Map for Scan")
+    eta_tol = cfg.find_orientations.eta.tolerance
+    
+    eta_ome = instrument.GenerateEtaOmeMaps(image_series_dict=cfg.image_series, 
+    instrument=instr, 
+    plane_data=plane_data, 
+    threshold=build_map_threshold, 
+    ome_period=omega_period, #cfg.find_orientations.omega.period is depricated
+    active_hkls=active_hkls, 
+    eta_step=eta_tol)
+    
+    eta_ome.save(filename=eta_ome_npz_save_dir)
+    
+elif eta_omega_map_path is not None:
+    eta_ome_maps = eta_omega_map_path
+    # load eta-ome maps for this scan for all grains
+    if os.path.exists(eta_ome_maps):
+        eta_ome = EtaOmeMaps(eta_ome_maps)
+    else:
+        raise ValueError('ETA-OME MAP NOT FOUND!')
+    
+
 print('building DSGODs from eta_ome maps...')
 for igrain, grain in enumerate(grain_mat_ids_list):
     print("Processing grain %i / %i" %(igrain, num_grains))
@@ -157,18 +185,18 @@ for igrain, grain in enumerate(grain_mat_ids_list):
     # location eta-ome maps and name of analysis_id
     if eta_omega_map_path is None:
         eta_ome_maps = eta_ome_npz_save_dir + analysis_id + '-grain-%d' % grain
-    else:
-        eta_ome_maps = eta_omega_map_path
+        eta_ome_maps = eta_ome_maps + "_maps.npz"
+        
+        # load eta-ome maps for this grain and scan
+        if os.path.exists(eta_ome_maps):
+            eta_ome = EtaOmeMaps(eta_ome_maps)
+        else:
+            raise ValueError('ETA-OME MAP NOT FOUND FOR GRAIN %i!' %(grain))
     
-    # load eta-ome maps for this grain and scan
-    maps_fname = eta_ome_maps + "_maps.npz"
-    if os.path.exists(maps_fname):
-        eta_ome = EtaOmeMaps(maps_fname)
-    else:
-        raise ValueError('ETA-OME MAP NOT FOUND FOR GRAIN %i!' %(grain))
-    eta_ome_hkl, eta_ome_hkl_ind, no_need = np.intersect1d(eta_ome.iHKLList, eta_ome_active_hkls, return_indices=True)
-    eta_ome.iHKLList = eta_ome.iHKLList[eta_ome_hkl_ind]
-    eta_ome.dataStore = eta_ome.dataStore[eta_ome_hkl_ind, :, :]
+    # TODO: Fix this active hkl indexing
+    #eta_ome_hkl, eta_ome_hkl_ind, no_need = np.intersect1d(eta_ome.iHKLList, eta_ome_active_hkls, return_indices=True)
+    #eta_ome.iHKLList = eta_ome.iHKLList[eta_ome_hkl_ind]
+    #eta_ome.dataStore = eta_ome.dataStore[eta_ome_hkl_ind, :, :]
     
     # set up orientations to search for building DSGOD clouds
     cur_exp_maps = np.zeros([1,3])

@@ -1,0 +1,50 @@
+beam:
+  energy: 61.332
+  vector:
+    azimuth: 90.0
+    polar_angle: 90.0
+calibration_crystal:
+  0:
+    inv_stretch:
+    - 1.0
+    - 1.0
+    - 1.0
+    - 0.0
+    - 0.0
+    - 0.0
+    orientation:
+    - 0.34349703032342926
+    - 0.8166600056636758
+    - -0.016383805214795835
+    position:
+    - 0.005334833578833817
+    - -0.113185025206295
+    - -0.33810416954329753
+detectors:
+  det1:
+    buffer:
+    - 5.0
+    - 5.0
+    pixels:
+      columns: 4500 #3073 #4500
+      rows: 3000 #3889 #2900
+      size:
+      - 0.1 #0.0748
+      - 0.1 #0.0748
+    saturation_level: 16000.0
+    transform:
+      tilt:
+      - 0.0
+      - 0.0
+      - 0.0
+      translation:
+      - 0.0
+      - 0.0
+      - -980.0
+id: EBSD_VirtDiffDetector
+oscillation_stage:
+  chi: -0.0
+  translation:
+  - 0.0
+  - 0.0
+  - 0.0
