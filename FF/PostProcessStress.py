@@ -46,6 +46,7 @@ else:
 # CONSTANTS
 # *****************************************************************************
 pi = np.pi
+analysis_path = os.path.join(os.path.dirname(__file__).split('CHESS_hedmTools')[0], 'CHESS_hedmTools/Analysis/')
 
 # single crystal elastic moduli
 c11 = 259.6e3 #260e3 #MPa
@@ -61,7 +62,7 @@ INCONEL_718_SX_STIFF = np.array([[c11, c12, c12,   0,   0,   0],
 INCONEL_718_E = 199e9 # found from DIC measurements in elastic regime, averaged over 75 points
 INCONEL_718_nu = 0.321 # found from DIC measurements in the elastic regime, averaged over 75 points
 INCONEL_718DP_Yield = 940e6 # macroscopic yield around this value
-INCONEL_718_SCHMID_TENSOR_LIST = [np.load(os.path.join(os.path.dirname(__file__), 'analysis/inconel_718_schmid_tensors.npy'))]
+INCONEL_718_SCHMID_TENSOR_LIST = [np.load(os.path.join(analysis_path, 'example_grains_out/inconel_718_schmid_tensors.npy'))]
 
 # *****************************************************************************
 # FUNCTION DECLARATION AND IMPLEMENTATION
@@ -1020,10 +1021,12 @@ if __name__ == '__main__':
     macro_strain = [0.2e-3, 0.35e-3, 0.54e-3, 0.73e-3] # epsilon_yy
     macro_stress = [402, 700, 953, 1020] # MPa, sigma_yy
     
-    init_grain_mat_list = [np.loadtxt(os.path.join(os.path.dirname(__file__), 'analysis/combined_grains_c0_1.out')),
-                           np.loadtxt(os.path.join(os.path.dirname(__file__), 'analysis/combined_grains_c0_2.out')),
-                           np.loadtxt(os.path.join(os.path.dirname(__file__), 'analysis/combined_grains_c0_3.out')),
-                           np.loadtxt(os.path.join(os.path.dirname(__file__), 'analysis/combined_grains_c1_1.out'))]
+    
+    grains_out_path = os.path.join(analysis_path, 'example_grains_out')
+    init_grain_mat_list = [np.loadtxt(os.path.join(grains_out_path, 'combined_grains_c0_1.out')),
+                           np.loadtxt(os.path.join(grains_out_path, 'combined_grains_c0_2.out')),
+                           np.loadtxt(os.path.join(grains_out_path, 'combined_grains_c0_3.out')),
+                           np.loadtxt(os.path.join(grains_out_path, 'combined_grains_c1_1.out'))]
     grain_mat_list = []
     for grain_mat in init_grain_mat_list:
         ind_thresh = np.where((grain_mat[:, 1] >= comp_thresh) & (grain_mat[:, 2] <= chi2_thresh))
@@ -1031,7 +1034,7 @@ if __name__ == '__main__':
     
     test_schmid_tesnors = False
     if test_schmid_tesnors:
-        cfg = os.path.join(os.path.dirname(__file__), 'example_config.yml')
+        cfg = os.path.join(analysis_path, 'example_ff_config.yml')
         schmid_tensors = gen_schmid_tensors_from_cfg(cfg, np.array([[1, 1, 0]]).T, np.array([[1, 1, 1]]).T)
     
     test_strength_extract = True

@@ -11,7 +11,6 @@ Created on Thu Mar 10 08:13:32 2022
 # *****************************************************************************
 
 import sys
-#import os
 
 import cc3d
 
@@ -42,7 +41,7 @@ else:
     #import scipy.spatial.transform as scipy_trans
     #from sklearn.neighbors import KernelDensity
 
-import OrientationTools
+import CHESS_hedmTools.SingleGrainOrientationDistributions.OrientationTools as OrientationTools
 from pyevtk.hl import pointsToVTK
 
 # *****************************************************************************
