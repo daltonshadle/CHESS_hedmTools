@@ -48,9 +48,26 @@ for i, g_id in enumerate(uni_ids):
 #%%
 
 import scipy.io as io
-avg_exp_stress = io.loadmat('/home/djs522/additional_sw/mech_suite/dp718_XtalMesh_cropped/final_dp718_xtalmesh_stress_MPa_c0_2-c0_1_298MPa.mat')['stress_mpa']
-avg_exp_stress = avg_exp_stress[uni_ids, :]
+all_avg_exp_stress = io.loadmat('/home/djs522/additional_sw/mech_suite/dp718_XtalMesh_cropped/final_dp718_xtalmesh_stress_MPa_c0_2-c0_1_298MPa.mat')['stress_mpa']
+avg_exp_stress = all_avg_exp_stress[uni_ids, :]
 
+#%%
+
+
+# avg_stress_for_mesh = np.zeros([mechmonics_vtk.cell_data['grains-0'][0].shape[0], 6])
+# for i, gid in enumerate(uni_ids):
+#     ind = np.where(mechmonics_vtk.cell_data['grains-0'][0] == gid)[0]
+#     avg_stress_for_mesh[ind, :] = all_avg_exp_stress[gid, :]
+
+avg_stress_for_mesh = np.zeros([mechmonics_vtk.cell_data['grains-0'][0].shape[0], 3, 3])
+for i, g_id in enumerate(uni_ids):
+    print(g_id)
+    g_cells = ((mechmonics_vtk.cell_data['grains-0'][0][:, 0] == g_id).astype(int) == 1)
+    g_points = mechmonics_vtk.cells[0].data[g_cells, :].flatten()
+    print(np.sum(g_cells), g_cells.shape, g_points, g_points.shape)
+    temp = np.mean(mechmonics_vtk.point_data['Stress'][g_points, :, :], axis=0)
+    print(temp.shape, temp)
+    avg_stress_for_mesh[g_cells, :, :] = temp
 
 
 #%%
@@ -66,9 +83,10 @@ for i in range(6):
     plt.figure()
     plt.hist(avg_diff_stress[:, i])
 
+    
 
 #%%
-mechmonics_w_model_vtk_fname = '/home/djs522/additional_sw/mech_suite/dp718_XtalMesh_cropped/dp718_cropped_16m_50w_model.vtk'
+mechmonics_w_model_vtk_fname = '/home/djs522/additional_sw/mech_suite/dp718_XtalMesh_cropped/dp718_cropped_16m_50w_model_avg.vtk'
 
 
 VERSION = '# vtk DataFile Version 3.0'
@@ -135,7 +153,8 @@ def write_cell_data(f, c_data, label, data_type, data_fmt):
 pt_data_list = [[mechmonics_vtk.point_data['Stress'], 'stress_mechmonics', DTYPE_R, DAT_TEN]]
 c_data_list = [[mechmonics_vtk.cell_data['phases-0'][0], 'phases-0', DTYPE_R, DAT_SCA],
                [mechmonics_vtk.cell_data['grains-0'][0], 'grains-0', DTYPE_R, DAT_SCA],
-               [voigt_stress_vt2_3d(stress_data), 'stress_model', DTYPE_R, DAT_TEN]]
+               [voigt_stress_vt2_3d(stress_data), 'stress_model', DTYPE_R, DAT_TEN],
+               [avg_stress_for_mesh, 'avg_exp_stress', DTYPE_R, DAT_TEN]]
 
 #%%
 with open(mechmonics_w_model_vtk_fname, 'w') as f:
