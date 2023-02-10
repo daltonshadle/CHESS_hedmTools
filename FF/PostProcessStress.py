@@ -52,6 +52,12 @@ analysis_path = os.path.join(os.path.dirname(__file__).split('CHESS_hedmTools')[
 c11 = 259.6e3 #260e3 #MPa
 c12 = 179.0e3 #177e3 #MPa
 c44 = 109.6e3 #107e3 #MPa
+# c11 = 260e3 #MPa
+# c12 = 177e3 #MPa
+# c44 = 107e3 #MPa
+c11 = 232e3
+c12 = 108e3
+c44 = 88e3
 INCONEL_718_SX_STIFF = np.array([[c11, c12, c12,   0,   0,   0], 
                                  [c12, c11, c12,   0,   0,   0], 
                                  [c12, c12, c11,   0,   0,   0],
@@ -60,7 +66,7 @@ INCONEL_718_SX_STIFF = np.array([[c11, c12, c12,   0,   0,   0],
                                  [  0,   0,   0,   0,   0, c44]])
 
 INCONEL_718_E = 199e9 # found from DIC measurements in elastic regime, averaged over 75 points
-INCONEL_718_nu = 0.321 # found from DIC measurements in the elastic regime, averaged over 75 points
+INCONEL_718_nu = 0.2785 # found from DIC measurements in the elastic regime, averaged over 75 points, 0.321
 INCONEL_718DP_Yield = 940e6 # macroscopic yield around this value
 INCONEL_718_SCHMID_TENSOR_LIST = [np.load(os.path.join(analysis_path, 'example_grains_out/inconel_718_schmid_tensors.npy'))]
 
@@ -191,10 +197,49 @@ def gen_sx_stiffness_tensor_in_sample_coord(grain_data, SX_STIFF=INCONEL_718_SX_
         
         # do voigt notation transformation of voigt stiffness matrix to sample 
         # coordinate systemusing using single grain orientation
-        gr_euler_zxz = hexrd_rot.exp_map_2_bunge_euler_zxz(gr_exp_map)
+        gr_rot_mat = hexrd_rot.rotMatOfExpMap(gr_exp_map)
+        gr_euler_zxz = hexrd_rot.angles_from_rmat_zxz(gr_rot_mat)
         r_z1 = voigt_z(gr_euler_zxz[0], in_deg=False)
         r_x = voigt_x(gr_euler_zxz[1], in_deg=False)
         r_z2 = voigt_z(gr_euler_zxz[2], in_deg=False)
+        gr_rot_mat_voigt = r_z2 @ r_x @ r_z1
+        gr_rot_stiff = gr_rot_mat_voigt @ SX_STIFF @ gr_rot_mat_voigt.T
+        sx_stiff_samp[i] = gr_rot_stiff
+    
+    return sx_stiff_samp
+
+def gen_rand_text_stiffness_tensor_in_sample_coord(angs, SX_STIFF=INCONEL_718_SX_STIFF):
+    # gen_sx_stiffness_tensor_in_sample_coord - generates the Voigt notation
+    #   single crystal stiffness tensors transformed to the sample coordinate system
+    #   by the orientation of a give grain
+    # 
+    #   INPUT:
+    #   grain_data is a numpy array (n x 21)
+    #      typical grains.out format of hexrd in numpy format for n grains
+    #   SX_STIFF is a numpy array (6 x 6)
+    #      stiffness tensor for a crystal in the crystal coord system
+    # 
+    #   OUTPUT:
+    #   sx_stiff_samp is a numpy array (n x 6 x 6)
+    #      stiffness tensors for n crystals in the sample coord system
+    #      
+    #   Notes:
+    #      None
+    #
+    
+    # gather number of grains for processing
+    num_grains=angs.shape[0]
+    
+    # initialize return structures
+    sx_stiff_samp = np.zeros([num_grains, 6, 6])
+    
+    # for each grain in the output
+    for i in np.arange(num_grains):
+        # do voigt notation transformation of voigt stiffness matrix to sample 
+        # coordinate systemusing using single grain orientation
+        r_z1 = voigt_z(angs[i, 0], in_deg=True)
+        r_x = voigt_x(angs[i, 1], in_deg=True)
+        r_z2 = voigt_z(angs[i, 2], in_deg=True)
         gr_rot_mat_voigt = r_z2 @ r_x @ r_z1
         gr_rot_stiff = gr_rot_mat_voigt @ SX_STIFF @ gr_rot_mat_voigt.T
         sx_stiff_samp[i] = gr_rot_stiff
@@ -245,7 +290,7 @@ def post_process_stress(grain_data, SX_STIFF=INCONEL_718_SX_STIFF,
         # grab exp map and convert strain vec to true strain vec for grain i
         gr_exp_map = np.atleast_2d(grain_data[i, 3:6]).T
         gr_strain_samp_v = np.atleast_2d(grain_data[i, 15:21]).T
-        gr_strain_samp_v[3:6] = 2 * gr_strain_samp_v[3:6] # TODO: check if this is needed
+        #gr_strain_samp_v[3:6] = 2 * gr_strain_samp_v[3:6] # TODO: check if this is needed
         
         # get the crys -> samp rotation as matrix for grain i
         gr_rot_mat = hexrd_rot.rotMatOfExpMap_opt(gr_exp_map)
@@ -577,7 +622,7 @@ def obj_func_sx_moduli_with_E(grain_mat_list_dict, C11, C12, C44):
         
         # gonvert strain vec to true strain vec for grain i
         gr_strain_s_v = np.atleast_2d(np.copy(grain_mat[:, 15:]))
-        gr_strain_s_v[:, 3:] = gr_strain_s_v[:, 3:] * 2 # TODO: check if this is needed
+        #gr_strain_s_v[:, 3:] = gr_strain_s_v[:, 3:] * 2 # TODO: check if this is needed
         # do elastic modulus calculations
         avg_elastic_mod[i] = np.average(gr_stress_s_v[:, 1] / gr_strain_s_v[:, 1], weights=weight) / 1e3 # put GPa to help with optimization
     
@@ -683,7 +728,7 @@ def voigt_reuss_bounds(grain_mat_list, macro_strain_s_v_list, macro_stress_s_v_l
         # grab exp map and convert strain vec to true strain vec for grain i
         gr_exp_map_sc = np.atleast_2d(grain_mat[:, 3:6]).T
         gr_strain_s_v = np.atleast_2d(grain_mat[:, 15:]).T
-        gr_strain_s_v[3:6] = 2 * gr_strain_s_v[3:6] # TODO: check if this is needed
+        #gr_strain_s_v[3:6] = 2 * gr_strain_s_v[3:6] # TODO: check if this is needed
           
         # get the crys -> samp rotation as matrix for grain i
         gr_rot_mat = hexrd_rot.rotMatOfExpMap_opt(gr_exp_map_sc)
@@ -1097,14 +1142,14 @@ def voigt_strain_v2t(v):
                     [v[4] / 2, v[3] / 2, v[2]]])
 def voigt_strain_t2v_3d(t):
     return np.atleast_2d([t[:,0,0], t[:,1,1], t[:,2,2], 2*t[:,1,2], 2*t[:,0,2], 2*t[:,0,1]])
-def voigt_stress_vt2_3d(v):
+def voigt_stress_v2t_3d(v):
     return np.array([[v[:,0], v[:,5], v[:,4]],
                     [v[:,5], v[:,1], v[:,3]],
                     [v[:,4], v[:,3], v[:,2]]]).T
-def voigt_strain_vt2_3d(v):
+def voigt_strain_v2t_3d(v):
     return np.array([[v[:,0], v[:,5] / 2, v[:,4] / 2],
                     [v[:,5] / 2, v[:,1], v[:,3] / 2],
-                    [v[:,4] / 2, v[:,3] / 2, v[:,2] / 2]]).T
+                    [v[:,4] / 2, v[:,3] / 2, v[:,2]]]).T
 def voigt_stress_t2v_3d(t):
     return np.atleast_2d([t[:,0,0], t[:,1,1], t[:,2,2], t[:,1,2], t[:,0,2], t[:,0,1]])
 
@@ -1202,7 +1247,7 @@ def calc_stress_from_strain_samp_fast(gr_strain_samp_t, gr_ori_rot_mat, SX_STIFF
     gr_stress_crys_v = np.dot(SX_STIFF, gr_strain_crys_v)
     
     # express grain stress from voigt vector to tensor
-    gr_stress_crys_t = voigt_stress_vt2_3d(gr_stress_crys_v.T)
+    gr_stress_crys_t = voigt_stress_v2t_3d(gr_stress_crys_v.T)
     
     # transform grain stresses in crystal to sample coord
     gr_stress_samp_t = np.einsum('tij,tjk->tik', gr_ori_rot_mat, gr_stress_crys_t)

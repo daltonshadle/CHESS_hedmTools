@@ -145,13 +145,13 @@ def init_correct_chess_vertical_beam_variation_extra(grains_out, vert_bnds=[-0.0
     
     # do a linear fit of vertical position and volumetric strain
     p = np.polyfit(pos_0[fit_grains, 1], v_strain_0[fit_grains], 1)
-    new_v_strain_0 = v_strain_0-p[0]*pos_0[:,1]
+    new_v_strain_0 = v_strain_0 - p[0]*pos_0[:,1] #-p[1]
     
     # check volumetric strain versus vertical position
     if do_plots:
         plt.figure(1)
-        plt.plot(pos_0[good_grains, 1], v_strain_0[good_grains],'y')
-        plt.plot(pos_0[good_grains,1], new_v_strain_0[good_grains], 'rx')
+        plt.scatter(pos_0[good_grains, 1], v_strain_0[good_grains], c='y')
+        plt.scatter(pos_0[good_grains, 1], new_v_strain_0[good_grains], c='r')
         
         plt.legend(['raw','energy gradient corrected'])
         
@@ -162,46 +162,49 @@ def init_correct_chess_vertical_beam_variation_extra(grains_out, vert_bnds=[-0.0
     print('Energy / Volumetric Strain Slope: %0.3e mm^-1' %(p[0]))
     print('Constant Term: %0.3e (if larger than 1e-4 consider using following plots/output to adjust lattice parameter(s)' %(p[1]))
     
-    astrain=np.zeros(n_grains)
-    bstrain=np.zeros(n_grains)
-    cstrain=np.zeros(n_grains)
+    astrain = np.zeros(n_grains)
+    bstrain = np.zeros(n_grains)
+    cstrain = np.zeros(n_grains)
     
-    # correct energy gradient
-    strain_0[:,0]=strain_0[:,0]-(p[0]*pos_0[:,1])
-    strain_0[:,1]=strain_0[:,1]-(p[0]*pos_0[:,1])
-    strain_0[:,2]=strain_0[:,2]-(p[0]*pos_0[:,1])
+    # correct energy gradient, -p[1] corrects for bad lattice paramwhich is 
+    # unwanted for finding correct lattice param
+    strain_0[:,0] = strain_0[:,0] - p[0]*pos_0[:,1] #- p[1]
+    strain_0[:,1] = strain_0[:,1] - p[0]*pos_0[:,1] #- p[1]
+    strain_0[:,2] = strain_0[:,2] - p[0]*pos_0[:,1] #- p[1]
     
-    if do_plots:
-        for ii in np.arange(n_grains):
-            ti = good_grains[ii]
-            
-            # get strain tensor and transform to crystal coord system
-            strain_ten_s = hexrd_mat.strainVecToTen(strain_0[ti, :])
-            R_sc = hexrd_rot.rotMatOfExpMap(ori_0[ti,:])
-            strain_ten_c = np.dot(R_sc.T, np.dot(strain_ten_s, R_sc))
-            astrain[ii]=strain_ten_c[0,0]
-            bstrain[ii]=strain_ten_c[1,1]
-            cstrain[ii]=strain_ten_c[2,2]
+    for ii in np.arange(n_grains):
+        ti = good_grains[ii]
         
+        # get strain tensor and transform to crystal coord system
+        strain_ten_s = hexrd_mat.strainVecToTen(strain_0[ti, :])
+        R_sc = hexrd_rot.rotMatOfExpMap(ori_0[ti,:])
+        strain_ten_c = np.dot(R_sc.T, np.dot(strain_ten_s, R_sc))
+        astrain[ii]=strain_ten_c[0,0]
+        bstrain[ii]=strain_ten_c[1,1]
+        cstrain[ii]=strain_ten_c[2,2]
+    
+    print('Delta a/a: %0.4e' %(np.mean(astrain)))
+    print('Delta b/b: %0.4e' %(np.mean(bstrain)))    
+    print('Delta c/c: %0.4e' %(np.mean(cstrain)))      
+    if do_plots:
         
         plt.figure(2)
         plt.plot(astrain,'x')
         plt.title(r'$\Delta a/a (\epsilon_{xx}^C)$')
         plt.xlabel('grain #')
-        print('Delta a/a: %0.4e' %(np.mean(astrain)))
                    
                    
         plt.figure(3)
         plt.plot(bstrain,'gx')
         plt.title(r'$\Delta b/b (\epsilon_{yy}^C)$')
         plt.xlabel('grain #')
-        print('Delta b/b: %0.4e' %(np.mean(bstrain)))           
+         
         
         plt.figure(4)
         plt.plot(cstrain,'rx')
         plt.title(r'$\Delta c/c (\epsilon_{zz}^C)$')
         plt.xlabel('grain #')
-        print('Delta c/c: %0.4e' %(np.mean(cstrain)))
+        
     
     #------------- Correcting for the lattice parameter -----------#
     if len(orig_lattice_params) == 1:
@@ -209,8 +212,11 @@ def init_correct_chess_vertical_beam_variation_extra(grains_out, vert_bnds=[-0.0
         a0 = orig_lattice_params[0] #original lattice parameter
         a = (1.+(np.mean(astrain)+np.mean(bstrain)+np.mean(cstrain))/3.)*a0
         
-        print("Original Lattice Paramter a = %0.3e A" %(a0))
-        print("New Lattice Paramter a = %0.3e A" %(a))
+        print("Original Lattice Paramter a = %0.5e A" %(a0))
+        print("New Lattice Paramter a = %0.5e A" %(a))
+        print("New Lattice Paramter a = %0.5e %0.5e %0.5eA" %(a0 * (1+np.mean(astrain)), 
+                                                              a0 * (1+np.mean(bstrain)), 
+                                                              a0 * (1+np.mean(cstrain))))
     elif len(orig_lattice_params) == 2:
         #FOR HEXAGONAL
         a0 = orig_lattice_params[0] #original lattice parameter
@@ -219,8 +225,8 @@ def init_correct_chess_vertical_beam_variation_extra(grains_out, vert_bnds=[-0.0
         a = (1.+(np.mean(astrain)+np.mean(bstrain))/2.)*a0
         c = (1.+(np.mean(cstrain)))*c0
     
-        print("Original Lattice Paramter a = %0.4e A, c = %0.4e A" %(a0, c0))
-        print("New Lattice Paramter a = %0.4e A, c = %0.4e A" %(a, c))
+        print("Original Lattice Paramter a = %0.5e A, c = %0.5e A" %(a0, c0))
+        print("New Lattice Paramter a = %0.5e A, c = %0.5e A" %(a, c))
     else:
         print("New lattice parameter couldn't be calculated.")
     
@@ -314,6 +320,31 @@ def torsion_load_check(grains_out, do_plots=True):
     print('Constant Term Radius: %0.3e' %(pr[1]))
     
     return pr
+
+def grain_COM_in_diffraction_volume(grains_out, 
+                                    diff_vol=[[-0.5, 0.5], [-0.5, 0.5], [-0.5, 0.5]], 
+                                    tol=0.005):
+    '''s
+    
+
+    Parameters
+    ----------
+    grains_out : numpy array (n x 21)
+        standard data from hexrd grains.out file loaded as numpy array.
+    diff_vol : list [3x2], optional
+        defines the x, y, z bounds for the diffraction volume in mm,
+        The default is [[-0.5, 0.5], [-0.5, 0.5], [-0.5, 0.5]].
+    tol : TYPE, optional
+        tolernance for grain COM to be outside of diff_vol in mm, 
+        The default is 0.005.
+
+    Returns
+    -------
+    None.
+
+    '''
+    
+    
 
 # *****************************************************************************
 # TESTING

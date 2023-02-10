@@ -45,6 +45,21 @@ grain_flags_DFLT = np.array(
     dtype=bool
 )
 
+
+# FOR NF
+# grain_flags_DFLT = np.array(
+#     [0, 0, 0,
+#      0, 0, 0,
+#      0, 0, 0, 0, 0, 0],
+#     dtype=bool
+# )
+# instr_param_flags = np.array(
+#     [0,
+#      0, 0,
+#      0,
+#      0, 0, 0], dtype=bool
+#  )
+
 # =============================================================================
 # %% Local function definitions
 # =============================================================================
@@ -126,7 +141,7 @@ def calibrate_instrument_from_sx(
     # 6*num_panels for the detectors
     # num_panels*ndp in case of distortion
     plist_full = instr.calibration_parameters
-
+    
     # now handle grains
     # reset parameter flags for grains as specified
     if grain_flags is None:
@@ -136,7 +151,7 @@ def calibrate_instrument_from_sx(
         [plist_full, np.hstack(grain_params)]
     )
 
-    # concatenate refinement flags
+    # concatenate refinement flag
     refine_flags = np.hstack([param_flags, grain_flags])
     plist_fit = plist_full[refine_flags]
     fit_args = (plist_full,
@@ -408,7 +423,7 @@ def calibrate_instrument_from_rotation_series_sx(cfg_filename, block_id=0, outpu
                                                  grain_ids=[0, 1, 2], clobber_strain=True,
                                                  clobber_centroid=False, clobber_grain_Y=False,
                                                  dexela_fixed_y=True, distortion_flags=None,
-                                                 do_init_plots=False):
+                                                 do_init_plots=False, estimate=None):
     '''
     
 
@@ -492,9 +507,16 @@ def calibrate_instrument_from_rotation_series_sx(cfg_filename, block_id=0, outpu
     hkls, xyo_det, idx_0 = parse_reflection_tables(cfg, instr, grain_ids)
     
     # load grain parameters
-    grain_parameters = np.loadtxt(
-        cfg.fit_grains.estimate,
-        ndmin=2)[grain_ids, 3:15]
+    if estimate is not None:
+        grains_out = np.loadtxt(
+            estimate,
+            ndmin=2)
+    else:
+        grains_out = np.loadtxt(
+            cfg.fit_grains.estimate,
+            ndmin=2)
+    grain_ind = grains_out[:, 0].searchsorted(grain_ids)
+    grain_parameters = grains_out[grain_ind, 3:15]
     if clobber_strain:
         for grain in grain_parameters:
             grain[6:] = cnst.identity_6x1
@@ -505,6 +527,7 @@ def calibrate_instrument_from_rotation_series_sx(cfg_filename, block_id=0, outpu
         for grain in grain_parameters:
             grain[4] = 0.
     ngrains = len(grain_parameters)
+    print("Number of Grains: %i" %(ngrains))
 
     # =============================================================================
     # plot initial guess
@@ -512,7 +535,7 @@ def calibrate_instrument_from_rotation_series_sx(cfg_filename, block_id=0, outpu
     
     xyo_i = calibrate_instrument_from_sx(
         instr, grain_parameters, bmat, xyo_det, hkls,
-        ome_period=np.radians(ome_period), sim_only=True
+        ome_period=np.radians(ome_period), sim_only=True, use_robust_lsq=True
     )
     
     if do_init_plots:
@@ -586,13 +609,14 @@ def calibrate_instrument_from_rotation_series_sx(cfg_filename, block_id=0, outpu
     
     # assemble flags
     param_flags = np.hstack([instr_param_flags, panel_param_flags])
-    grain_flags = np.tile(grain_flags_DFLT, (3, 1)).flatten()
+    grain_flags = np.tile(grain_flags_DFLT, (ngrains, 1)).flatten()
     
     params, resd, xyo_f = calibrate_instrument_from_sx(
         instr, grain_parameters, bmat, xyo_det, hkls,
         ome_period=np.radians(ome_period),
         param_flags=param_flags,
-        grain_flags=grain_flags
+        grain_flags=grain_flags,
+        use_robust_lsq=True
     )
     
     # define difference vectors for spot fits
@@ -648,7 +672,8 @@ def calibrate_instrument_from_rotation_series_sx(cfg_filename, block_id=0, outpu
         instr, grain_parameters, bmat, xyo_det_refit, hkls_refit,
         ome_period=np.radians(ome_period),
         param_flags=param_flags,
-        grain_flags=grain_flags
+        grain_flags=grain_flags,
+        use_robust_lsq=True
     )
     
     
@@ -695,7 +720,9 @@ def calibrate_instrument_from_rotation_series_sx(cfg_filename, block_id=0, outpu
             ax[1].set_ylabel(r'$\omega$ [deg]')
     
             ax[0].axis('equal')
-    
+            
+        
+        fig.legend(['sim', 'init', 'final'])
         fig.show()
     
     

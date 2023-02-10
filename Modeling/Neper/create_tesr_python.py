@@ -35,8 +35,8 @@ X_COORD = 'Xs'
 Y_COORD = 'Ys'
 Z_COORD = 'Zs'
 ORI_LIST = 'ori_list'
-#OLD_IDS = 'old_ids'
-#NEW_IDS = 'new_ids'
+OLD_IDS = 'old_ids'
+NEW_IDS = 'new_ids'
 
 # *****************************************************************************
 #%% FUNCTIONS
@@ -146,32 +146,29 @@ def volume_fraction_conf(grain_map, conf_map):
 #  - SAVE_NPZ = True if user wants to save .npz of data (for instance, if coordinates are calculated)
 
 #USER INPUT
-voxel_spacing = 0.0030769
-voxel_threshold = 0#100#400#80#400
-voxel_cc3d = True
-conf_thresh = 0.0
-connectivity = 26 #6
+voxel_spacing = 0.003 # mm
+conf_thresh = 0.0 # minimum confidence / completeness threshold for voxels to use in grain map
+voxel_threshold = 0 # minimum number of voxels to be considered a grain
+voxel_cc3d = True # bool flag True = do connected components analysis to segment grains that have the same grain ID but are not connected, False = ignore
+connectivity = 26 # extra variable for cc3d analysis to describe connectivity type, can be 6, 18, 26
+
+REORDER_GRAIN_ID = True # bool flag True = reorder grain ids in grain map to sequentially range from 0-n needed for Mech-Suite, False = ignore
+HAVE_COORD = True # bool flag True = grain map has coordinates data, False = grain map does not have coordinates, need to generate in this script
+HAVE_ORI = True # bool flag True = grain map has orientation data, False = grain map does not have orientations
+EXAMPLE = False # bool flag True = use example data, False = use user input
+SAVE_NPZ = True # bool flag True = save new grain map used for neper input as npz, False = ignore
+DEBUG = False # bool flag True = show some debug statements, False = ignore
+
 
 MY_PATH = '/media/djs522/djs522_nov2020/chess_2020_11/djs522_nov2020_in718/dp718/'
 FILENAME = 'final_dp718_total_3micron_grain_map_data.npz'
 SAVENAME = 'final_dp718_total_3micron'
-
-#MY_PATH = '/media/djs522/djs522_nov2020/chess_2020_11/djs522_nov2020_in718/ss718/'
-#FILENAME = 'final_ss718_total_3micron_xyz_grain_map_data.npz'
-#SAVENAME = 'final_ss718_total_3micron_xyz'
 
 if voxel_cc3d:
     UPDATED_EXT = '_conf%i_voxel%i_cc3d%i_tesr' %(int(conf_thresh*100), voxel_threshold, connectivity)
 else:
     UPDATED_EXT = '_conf%i_voxel%i_tesr' %(int(conf_thresh*100), voxel_threshold)
 SAVENAME = SAVENAME + UPDATED_EXT
-
-#USER OPTIONS
-HAVE_COORD = True
-EXAMPLE = False
-SAVE_NPZ = True
-DEBUG = False
-HAVE_ORI = True
 
 #LOAD DATA
 data=np.load(open(MY_PATH + FILENAME,'rb'))  
@@ -195,8 +192,9 @@ else:
 
 #%%
 
-grain_map_ori = np.copy(grain_map)
-grain_map_id, new_ids, old_ids, new_gsd, old_gsd = reorder_ids(grain_map, voxel_threshold=voxel_threshold, 
+if REORDER_GRAIN_ID:
+    grain_map_ori = np.copy(grain_map)
+    grain_map_id, new_ids, old_ids, new_gsd, old_gsd = reorder_ids(grain_map, voxel_threshold=voxel_threshold, 
                                           do_cc=voxel_cc3d, conf_map=(conf_map >= conf_thresh), connectivity=connectivity)
 
 #vol_frac_conf_new = volume_fraction_conf(grain_map, conf_map) 
@@ -218,26 +216,6 @@ if HAVE_ORI:
     new_exp_maps = old_exp_maps[old_ids.flatten(), :]
     new_quat = old_quat[old_ids.flatten(), :]
     new_rod = old_rod[old_ids.flatten(), :]
-
-'''
-fig = plt.figure()
-plt.hist(old_gsd, bins=200)
-fig = plt.figure()
-plt.hist(new_gsd, bins=200)
-plt.show()
-
-my_id = 1605
-
-fig = plt.figure()
-ax = Axes3D(fig)
-#ax.scatter(Xs[old_gm == my_id], Ys[old_gm == my_id], Zs[old_gm == my_id], c=old_gm[old_gm == my_id])
-ax.scatter(Xs[old_gm == my_id], Ys[old_gm == my_id], Zs[old_gm == my_id], c=grain_map[old_gm == my_id])
-#ax.scatter(Xs[grain_map == my_id], Ys[grain_map == my_id], Zs[grain_map == my_id], c=grain_map[grain_map == my_id])
-plt.show()
-
-print(np.unique(grain_map[old_gm == my_id]))
-
-'''
 
 #%%
 
@@ -339,6 +317,8 @@ print('Done!')
 
 
 #%%
+
+'''
 
 from NF.nf_vtk_with_ipf import add_ipf_to_nf_vtk
 
@@ -448,5 +428,5 @@ add_ipf_to_nf_vtk(path_to_nf_npz, ipf_axis=np.array([0.0, 1.0, 0.0]),
                       GRAIN_MAP_ID_KEY='GRAIN_MAP', ORIENTATION_KEY='EXP_MAPS',
                       GRAIN_MAP_ORI_KEY='GRAIN_MAP_ORI', CONFIDENCE_KEY='CONFIDENCE_MAP',
                       X_KEY='X_COORD', Y_KEY='Y_COORD', Z_KEY='Z_COORD')
-
+'''
 

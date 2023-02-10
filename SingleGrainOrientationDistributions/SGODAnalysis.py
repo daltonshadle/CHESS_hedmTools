@@ -729,6 +729,8 @@ def process_dsgod_file(dsgod_npz_dir, comp_thresh=0.85, inten_thresh=0, do_avg_o
     # transform orientation to Rodrigues vectors
     grain_quat = np.reshape(grain_quat, [grain_quat.shape[1], grain_quat.shape[2]])
     
+    print(grain_inten_arr.shape, grain_filter_arr.shape, grain_quat.shape)
+    
     # TIM WORK ****************************************************************
     # reverse sort intensities in high -> low order
     sort_ind = np.argsort(-grain_inten_arr, axis=1)
@@ -789,6 +791,188 @@ def process_dsgod_file(dsgod_npz_dir, comp_thresh=0.85, inten_thresh=0, do_avg_o
             grain_odf = thresh_grain_inten / sum_grain_inten.astype(float)
             
             print("Number of Diffraction Events: %i" %(grain_inten_arr.shape[1]))
+            print('Max inten = %f, Min inten = %f' %(np.max(thresh_grain_inten), np.min(thresh_grain_inten)))
+            #print('Max ODF = %f, Min ODF = %f' %(np.max(grain_odf)*100, np.min(grain_odf)*100))
+            
+            grain_avg_quat = np.atleast_2d(np.average(grain_quat, axis=1, weights=grain_odf)).T
+            
+            # MISOREINTATION WORK *****************************************************
+            [grain_mis_ang_deg, grain_mis_quat] = OrientationTools.calc_misorientation_quat(grain_avg_quat, grain_quat)
+            #calc_misorientation(grain_quat[:, grain_odf > 0], avg_quat=grain_avg_quat, disp_stats=False)
+        else:
+            print('1. Using avg quat')
+            grain_quat = grain_avg_quat
+            grain_odf = np.ones(grain_quat.shape[1])
+            grain_mis_quat = np.zeros(grain_quat.shape)
+            grain_mis_quat[0] = 1
+            sum_grain_inten = 1
+    else:
+        print('2. Using avg quat')
+        grain_quat = grain_avg_quat
+        grain_odf = np.ones(grain_quat.shape[1])
+        grain_mis_quat = np.zeros(grain_quat.shape)
+        grain_mis_quat[0] = 1
+        sum_grain_inten = 0
+        
+    # RETURN ******************************************************************
+    if save:
+        dsgod_npz_save_dir = dsgod_npz_dir.split('.npz')[0]
+        # np.savez(dsgod_npz_save_dir + '_processed', dsgod_box_shape=grain_goe_box,
+        #           dsgod_avg_expmap=grain_avg_expmap, dsgod_avg_quat=grain_avg_quat,
+        #           dsgod_box_quat=grain_quat, dsgod_box_mis_quat=grain_mis_quat,
+        #           dsgod_box_dsgod=grain_odf, dsgod_comp_thresh=comp_thresh)
+        grain_quat = grain_quat[:, grain_odf > 0].T
+        grain_mis_quat = grain_mis_quat[:, grain_odf > 0].T
+        grain_odf = grain_odf[grain_odf > 0]
+        
+        comp_str = str(comp_thresh).replace('.', '_')
+        np.savez(dsgod_npz_save_dir + '_%s_reduced' %(comp_str), dsgod_box_shape=grain_goe_box,
+                  dsgod_avg_expmap=grain_avg_expmap, dsgod_avg_quat=grain_avg_quat,
+                  dsgod_box_quat=grain_quat, dsgod_box_mis_quat=grain_mis_quat,
+                  dsgod_box_dsgod=grain_odf, dsgod_sum_inten=sum_grain_inten,
+                  dsgod_comp_thresh=comp_thresh)
+    
+    return [grain_quat, grain_mis_quat, grain_odf]
+
+def process_dsgod_file_new(dsgod_npz_dir, comp_thresh=0.85, inten_thresh=0, do_avg_ori=True, 
+                        do_conn_comp=True, save=False, connectivity_type=18):
+    '''
+    Purpose: processing raw DSGOD file created from HEDM / VD data
+
+    Parameters
+    ----------
+    dsgod_npz_dir : string
+        path to dsgod .npz file
+    comp_thresh : float, optional
+        completeness threshold for gathering intensity info to construct dsgod.
+        The default is 0.85.
+    inten_thresh : float, optional
+        intensity threshold to construct dsgod, not recommended. 
+        The default is 0.
+    do_avg_ori : bool, optional
+        flag for using average orientation to identify reference orientaiton 
+        cloud if there are multiple clouds in the raw DSGOD file. 
+        The default is True.
+    do_conn_comp : bool, optional
+        flag for using connected components to identify reference orientation 
+        cloud if there are multiple clouds in the raw DSGOD file. 
+        The default is True.
+    save : bool, optional
+        flag for saving DSGOD results. The default is False.
+    connectivity_type : int, optional
+        describes connectivity for connected components, can be 26, 18, and 6. 
+        The default is 18.
+
+    Returns
+    -------
+    [grain_quat, grain_mis_quat, grain_odf]
+    grain_quat : numpy array (n x 4)
+        list of quaternions in DSGOD
+    grain_mis_quat: numpy array (n x 4)
+        list of misorientation quaternions (when compared to average 
+        orientation) in DSGOD
+    grain_odf: numpy array (n x 1)
+        list of weights for orientations in DSGOD
+
+    '''
+    
+    # load grain data
+    '''
+    np.savez(dsgod_npz_save_dir, dsgod_box_shape=box_shape,
+                  dsgod_avg_expmap=cur_exp_maps,
+                  dsgod_box_comp=dsgod_box_comp, dsgod_box_quat=dsgod_box_quat,
+                  dsgod_box_inten=dsgod_box_inten, dsgod_box_inten_list=dsgod_box_inten_list,
+                  dsgod_box_hit_list=dsgod_box_hit_list, dsgod_box_filter_list=dsgod_box_filter_list)
+    '''
+    
+    grain_goe_info = np.load(dsgod_npz_dir)
+    grain_goe_box = grain_goe_info['dsgod_box_shape']
+    grain_inten_arr = grain_goe_info['dsgod_box_inten_list'].astype(np.int32)
+    grain_filter_arr = grain_goe_info['dsgod_box_filter_list'].astype(np.int8)
+    grain_avg_expmap = grain_goe_info['dsgod_avg_expmap']
+    grain_avg_quat = np.atleast_2d(hexrd_rot.quatOfExpMap(grain_avg_expmap.T)).T
+    misorientation_bnd = grain_goe_info['misorientation_bnd']
+    misorientation_spacing = grain_goe_info['misorientation_spacing']
+    if 'truncate_comp_thresh' in list(grain_goe_info.keys()):
+        truncate_comp_thresh = grain_goe_info['truncate_comp_thresh']
+        if truncate_comp_thresh is None:
+            truncate_comp_thresh = 0
+    else:
+        truncate_comp_thresh = 0
+    
+    # regenerate orientations    
+    mis_amt = np.radians(misorientation_bnd)
+    mis_spacing = np.radians(misorientation_spacing)
+    ori_pts = np.arange(-mis_amt, (mis_amt+(mis_spacing*0.999)), mis_spacing)
+    ori_Xs, ori_Ys, ori_Zs = np.meshgrid(ori_pts, ori_pts, ori_pts)
+    ori_grid = np.vstack([ori_Xs.flatten(), ori_Ys.flatten(), ori_Zs.flatten()]).T
+    grain_exp_maps = ori_grid + grain_avg_expmap
+    
+    # transform orientation to Rodrigues vectors
+    grain_quat = hexrd_rot.quatOfExpMap(grain_exp_maps.T)
+    
+    # TIM WORK ****************************************************************
+    # reverse sort intensities in high -> low order
+    sort_ind = np.argsort(-grain_inten_arr, axis=1)
+    sort_grain_inten_arr = np.take_along_axis(grain_inten_arr, sort_ind, axis=1)
+    
+    # find index of intensity value to use based on completeness thresholding (Tim Long way)
+    if comp_thresh < truncate_comp_thresh:
+        raise ValueError('Completeness threshold cannot be less than truncated completeness of raw data %0.2f' %(truncate_comp_thresh))
+    sum_filter = np.sum(grain_filter_arr, axis=1)
+    comp_filter_ind = ((comp_thresh - truncate_comp_thresh) * sum_filter / (1 - truncate_comp_thresh)).astype(int)
+    
+    # gather intensity values based on index found above
+    grain_inten = sort_grain_inten_arr[np.arange(grain_inten_arr.shape[0]), comp_filter_ind]
+    grain_inten[grain_inten < inten_thresh] = 0
+    
+    if np.any(grain_inten > 0):
+        
+        if do_conn_comp:
+            # CONN COMP WORK ***********************************************************
+            
+            conn_comp_inten = np.reshape(grain_inten, grain_goe_box)
+            conn_comp_map = cc3d.connected_components(conn_comp_inten > inten_thresh, connectivity=connectivity_type)
+            
+            if do_avg_ori:
+                # find nearest non-zero intenisty closest to avg orient as DSGOD group
+                nnz_inten_quats = grain_quat[:, grain_inten > inten_thresh]
+                
+                grain_avg_quat_norms = np.linalg.norm(nnz_inten_quats - grain_avg_quat, axis=0)
+                avg_ori_quat = nnz_inten_quats[:, np.where(grain_avg_quat_norms == np.min(grain_avg_quat_norms))[0]]
+                avg_ori_ind = np.where((grain_quat == avg_ori_quat).all(axis=0))[0]
+                
+                # reshape conn comp to find center group number
+                group_num = np.reshape(conn_comp_map, [conn_comp_inten.size])[avg_ori_ind]
+            else:
+                # find max count as GOE group
+                # find unique groups and counts
+                conn_comp_uni, conn_comp_count = np.unique(conn_comp_map, return_counts=True)
+                # remove 0 from list
+                conn_comp_count = conn_comp_count[(conn_comp_uni != 0)]
+                conn_comp_uni = conn_comp_uni[(conn_comp_uni != 0)]
+                # find the group number with max count and filter
+                group_num = conn_comp_uni[conn_comp_count == np.max(conn_comp_count)]
+            
+            # remap values not in group to 0 adn values in group to 1
+            conn_comp_map[conn_comp_map != group_num] = 0
+            conn_comp_map[conn_comp_map == group_num] = 1
+            
+            # set all intensities not in group to 0 and reshape
+            conn_comp_inten[np.logical_not(conn_comp_map)] = 0
+            thresh_grain_inten = np.reshape(conn_comp_inten, [conn_comp_inten.size])
+        else:
+            thresh_grain_inten = grain_inten
+            
+        
+        # DSGOD WORK **************************************************************
+        sum_grain_inten = np.sum(thresh_grain_inten)
+        #print(sum_grain_inten)
+        
+        if sum_grain_inten > 0:
+            grain_odf = thresh_grain_inten / sum_grain_inten.astype(float)
+            
+            print("Number of Diffraction Events: %i" %(grain_inten_arr.shape[1] + sum_filter.mean()))
             print('Max inten = %f, Min inten = %f' %(np.max(thresh_grain_inten), np.min(thresh_grain_inten)))
             #print('Max ODF = %f, Min ODF = %f' %(np.max(grain_odf)*100, np.min(grain_odf)*100))
             

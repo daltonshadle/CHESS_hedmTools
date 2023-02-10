@@ -37,7 +37,8 @@ def load_instrument(yml):
 
 
 def chunk_frame_cache(cfg_name, base_dim=(1944, 1536), n_rows_cols=(2, 2), 
-                      row_col_gap=(0, 0), updated_instr_path=None):
+                      row_col_gap=(0, 0), updated_config_path=None,
+                      updated_instr_path=None, updated_analysis_name=None):
     '''
     
 
@@ -125,10 +126,14 @@ def chunk_frame_cache(cfg_name, base_dim=(1944, 1536), n_rows_cols=(2, 2),
     
     # update config and save
     cfg._cfg['image_series']['data'] = new_cfg_img_data
-    cfg.analysis_name = cfg.analysis_name + '_mpanel'
+    
+    if updated_config_path is None:
+        updated_config_path = cfg_name.replace('.yml', '_mpanel.yml')
+    if updated_analysis_name is not None:
+        cfg.analysis_name = updated_analysis_name
     if updated_instr_path is not None:
         cfg._cfg['instrument'] = updated_instr_path
-    cfg.dump(cfg_name.replace('.yml', '_mpanel.yml'))
+    cfg.dump(updated_config_path)
 
 def chunk_detector(cfg_name, base_dim=(1944, 1536), n_rows_cols=(2, 2), 
                       row_col_gap=(0, 0), updated_instr_path=None):
@@ -169,11 +174,13 @@ def chunk_detector(cfg_name, base_dim=(1944, 1536), n_rows_cols=(2, 2),
     row_starts = [i*(base_dim[0] + row_gap) for i in range(nrows)]
     col_starts = [i*(base_dim[1] + col_gap) for i in range(ncols)]
     rr, cc = np.meshgrid(row_starts, col_starts, indexing='ij')
-
+    
     icfg_dict = instr.write_config()
-    new_icfg_dict = dict(beam=icfg_dict['beam'],
-                         oscillation_stage=icfg_dict['oscillation_stage'],
-                         detectors={})
+    new_icfg_dict = {}
+    for key in icfg_dict.keys():
+        new_icfg_dict[key] = icfg_dict[key]
+        print(key)
+    new_icfg_dict['detectors'] = {}
     
     if updated_instr_path is None:
         updated_instr_path = cfg.instrument._configuration.split('.')[0] + '_mpanel.yml'
@@ -216,6 +223,7 @@ def chunk_detector(cfg_name, base_dim=(1944, 1536), n_rows_cols=(2, 2),
     # write instrument
     with open(updated_instr_path, 'w') as fid:
         print(yaml.dump(new_icfg_dict, default_flow_style=False), file=fid)
+    
 
 
 if __name__ == '__main__':

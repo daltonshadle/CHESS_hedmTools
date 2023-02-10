@@ -12,6 +12,7 @@ Created on Thu Mar 10 08:13:32 2022
 import sys
 import os
 import numpy as np
+import matplotlib.pyplot as plt
 
 if sys.version_info[0] < 3:
     # python 2
