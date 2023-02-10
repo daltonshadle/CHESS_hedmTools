@@ -13,8 +13,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
 #from hexrd.xrd import rotations as rot
-from hexrd import rotations as rot
-import scipy.io as sio    
+from hexrd import rotations as rot  
 
 #%% FUNCTIONS
 def quat2rod(quat):
@@ -48,6 +47,7 @@ OUT_PATH = '/home/djs522/Downloads/temp/'
 SAVENAME = 'cTi_pos.npos'
 ORI_SAVENAME = 'cTi_rod.txt'
 ORI_SYM = 'hexagonal'
+ORI_CONVENTION = 'passive'
 SCAN_BOUNDS = [[-0.5, 0.5], [-0.2, 0.4], [-0.5, 0.5]]
 SCAN_BOUNDS = [[-1.5, 1.0], [-0.3, 0.4], [-1.5, 1.0]]
 SCAN_DIMEN = [np.round(np.abs(SCAN_BOUNDS[0][0] - SCAN_BOUNDS[0][1]), decimals=4),
@@ -110,7 +110,7 @@ print('   POS_LOAD:   -loadpoint "file("%s"):dim"' %(SAVENAME))
 print('   TESR_SIZE:   -tesrsize "%i:%i:%i"' %(SCAN_DIMEN[0] / VOXEL_SIZE, SCAN_DIMEN[1] / VOXEL_SIZE, SCAN_DIMEN[2] / VOXEL_SIZE))
 
 print('neper -T -n %i -dim 3 -domain "cube(%.3f,%.3f,%.3f)" -loadpoint "msfile(%s)" \
--ori "file(%s [,des=rodrigues:passive])" -oridescriptor rodrigues:passive -oricrysym %s \
+-ori "file(%s [,des=rodrigues:%s])" -oridescriptor rodrigues:%s -oricrysym %s \
 -reg 1 -mloop 10 -morpho voronoi -morphooptistop itermax=5000 -format tess,tesr \
 -tesrsize "%i:%i:%i" -tesrformat "ascii" -o $MICRO_FN_OUT' 
       %(good_pos_grain_mat.shape[0],
@@ -119,6 +119,8 @@ print('neper -T -n %i -dim 3 -domain "cube(%.3f,%.3f,%.3f)" -loadpoint "msfile(%
         SCAN_DIMEN[2],
         OUT_PATH+SAVENAME,
         OUT_PATH + ORI_SAVENAME,
+        ORI_CONVENTION,
+        ORI_CONVENTION,
         ORI_SYM,
         SCAN_DIMEN[0] / VOXEL_SIZE, 
         SCAN_DIMEN[1] / VOXEL_SIZE, 
