@@ -50,7 +50,7 @@ from pyevtk.hl import pointsToVTK
 
 def plot_grain_dsgod(grain_rod, grain_odf=None, reverse_map=False, 
                      just_faces=False, no_axis=False, cmap=plt.cm.viridis_r,
-                     scatter_size=400, fig=None, ori_ax=None):
+                     scatter_size=400, fig=None, ori_ax=None, lim_list=None):
     '''
     Purpose: plots the discrete single grain orientation distribution (DSGOD) in
       3D Rodigrues Orientation Space with 2D projected distributions on the 
@@ -187,9 +187,10 @@ def plot_grain_dsgod(grain_rod, grain_odf=None, reverse_map=False,
     ori_ax.zaxis.set_rotate_label(True)
     
     # set limits
-    lim_list = [np.min(grain_rod[:, 0]) - lim_step, np.max(grain_rod[:, 0]) + lim_step,
-                np.min(grain_rod[:, 1]) - lim_step, np.max(grain_rod[:, 1]) + lim_step,
-                np.min(grain_rod[:, 2]) - lim_step, np.max(grain_rod[:, 2]) + lim_step]
+    if lim_list is None:
+        lim_list = [np.min(grain_rod[:, 0]) - lim_step, np.max(grain_rod[:, 0]) + lim_step,
+                    np.min(grain_rod[:, 1]) - lim_step, np.max(grain_rod[:, 1]) + lim_step,
+                    np.min(grain_rod[:, 2]) - lim_step, np.max(grain_rod[:, 2]) + lim_step]
     
     ori_ax.set_xlim3d(lim_list[0], lim_list[1])
     ori_ax.set_ylim3d(lim_list[2], lim_list[3])
@@ -384,7 +385,7 @@ def calc_misorient_moments(grain_mis_quat, grain_odf=None, norm_regularizer=0):
     
     
 def animate_dsgods_rod(grain_rod_list, grain_odf_list=None, labels_list=None, 
-                 interval=1000, save_gif_dir=None):
+                 interval=1000, save_gif_dir=None, constant_axes=True):
     '''
     Purpose: creates an animated gif from a list of discrete single grain orientation
         distributions (DSGODs)
@@ -427,10 +428,18 @@ def animate_dsgods_rod(grain_rod_list, grain_odf_list=None, labels_list=None,
     fig = plt.figure(figsize=[12, 8])
     ori_ax = Axes3D(fig)
     
+    lim_list = None
+    if constant_axes:
+        lim_step = 0.02
+        iter_ca = 1
+        lim_list = [np.min(grain_rod_list[iter_ca][:, 0]) - lim_step, np.max(grain_rod_list[iter_ca][:, 0]) + lim_step,
+                    np.min(grain_rod_list[iter_ca][:, 1]) - lim_step, np.max(grain_rod_list[iter_ca][:, 1]) + lim_step,
+                    np.min(grain_rod_list[iter_ca][:, 2]) - lim_step, np.max(grain_rod_list[iter_ca][:, 2]) + lim_step]
+    
     # plot DSGOD
     [fig, ori_ax] = plot_grain_dsgod(grain_rod_list[0], grain_odf=grain_odf_list[0], reverse_map=False, 
                      just_faces=False, no_axis=False, cmap=plt.cm.viridis_r,
-                     scatter_size=50, fig=fig, ori_ax =ori_ax)
+                     scatter_size=50, fig=fig, ori_ax=ori_ax, lim_list=lim_list)
     fig.suptitle('Time Step: %s' %(labels_list[0]))
     
     # set limits
@@ -439,7 +448,8 @@ def animate_dsgods_rod(grain_rod_list, grain_odf_list=None, labels_list=None,
     # do function animation
     ani = animation.FuncAnimation(fig, update_animate_dsgods_rod, interval=interval,
                                   frames=numframes, fargs=(grain_rod_list, grain_odf_list, 
-                                                           labels_list, ori_ax, init_avg_rod, fig))
+                                                           labels_list, ori_ax, init_avg_rod, lim_list,
+                                                           fig))
     #mng = plt.get_current_fig_manager()
     #mng.window.showMaximized()
     
@@ -448,7 +458,7 @@ def animate_dsgods_rod(grain_rod_list, grain_odf_list=None, labels_list=None,
         ani.save(save_gif_dir, writer='imagemagick', dpi=400)
 
 def update_animate_dsgods_rod(i, grain_rod_list, grain_odf_list, labels_list, ori_ax,
-                        init_avg_rod, fig):
+                        init_avg_rod, lim_list, fig):
     '''
     Purpose: companion update function to animate_dsgods_rod
 
@@ -483,7 +493,7 @@ def update_animate_dsgods_rod(i, grain_rod_list, grain_odf_list, labels_list, or
       
     [fig, ori_ax] = plot_grain_dsgod(grain_rod_list[i], grain_odf=grain_odf_list[i], reverse_map=False, 
                      just_faces=False, no_axis=False, cmap=plt.cm.viridis_r,
-                     scatter_size=50, fig=fig, ori_ax =ori_ax)
+                     scatter_size=50, fig=fig, ori_ax=ori_ax, lim_list=lim_list)
     fig.suptitle('Time Step: %s' %(labels_list[i]))
 
     return ori_ax,
@@ -835,7 +845,7 @@ def process_dsgod_file(dsgod_npz_dir, comp_thresh=0.85, inten_thresh=0, do_avg_o
     return [grain_quat, grain_mis_quat, grain_odf]
 
 def process_dsgod_file_new(dsgod_npz_dir, comp_thresh=0.85, inten_thresh=0, do_avg_ori=True, 
-                        do_conn_comp=True, save=False, connectivity_type=18):
+                        do_conn_comp=True, save=False, connectivity_type=18, quiet=True):
     '''
     Purpose: processing raw DSGOD file created from HEDM / VD data
 
@@ -972,9 +982,10 @@ def process_dsgod_file_new(dsgod_npz_dir, comp_thresh=0.85, inten_thresh=0, do_a
         if sum_grain_inten > 0:
             grain_odf = thresh_grain_inten / sum_grain_inten.astype(float)
             
-            print("Number of Diffraction Events: %i" %(grain_inten_arr.shape[1] + sum_filter.mean()))
-            print('Max inten = %f, Min inten = %f' %(np.max(thresh_grain_inten), np.min(thresh_grain_inten)))
-            #print('Max ODF = %f, Min ODF = %f' %(np.max(grain_odf)*100, np.min(grain_odf)*100))
+            if not quiet:
+                print("Number of Diffraction Events: %i" %(grain_inten_arr.shape[1] + sum_filter.mean()))
+                print('Max inten = %f, Min inten = %f' %(np.max(thresh_grain_inten), np.min(thresh_grain_inten)))
+                #print('Max ODF = %f, Min ODF = %f' %(np.max(grain_odf)*100, np.min(grain_odf)*100))
             
             grain_avg_quat = np.atleast_2d(np.average(grain_quat, axis=1, weights=grain_odf)).T
             
@@ -982,18 +993,22 @@ def process_dsgod_file_new(dsgod_npz_dir, comp_thresh=0.85, inten_thresh=0, do_a
             [grain_mis_ang_deg, grain_mis_quat] = OrientationTools.calc_misorientation_quat(grain_avg_quat, grain_quat)
             #calc_misorientation(grain_quat[:, grain_odf > 0], avg_quat=grain_avg_quat, disp_stats=False)
         else:
-            print('1. Using avg quat')
+            if not quiet:
+                print('1. Using avg quat')
             grain_quat = grain_avg_quat
             grain_odf = np.ones(grain_quat.shape[1])
             grain_mis_quat = np.zeros(grain_quat.shape)
             grain_mis_quat[0] = 1
+            grain_mis_ang_deg = np.array([0])
             sum_grain_inten = 1
     else:
-        print('2. Using avg quat')
+        if not quiet:
+            print('2. Using avg quat')
         grain_quat = grain_avg_quat
         grain_odf = np.ones(grain_quat.shape[1])
         grain_mis_quat = np.zeros(grain_quat.shape)
         grain_mis_quat[0] = 1
+        grain_mis_ang_deg = np.array([0])
         sum_grain_inten = 0
         
     # RETURN ******************************************************************
@@ -1014,7 +1029,7 @@ def process_dsgod_file_new(dsgod_npz_dir, comp_thresh=0.85, inten_thresh=0, do_a
                   dsgod_box_dsgod=grain_odf, dsgod_sum_inten=sum_grain_inten,
                   dsgod_comp_thresh=comp_thresh)
     
-    return [grain_quat, grain_mis_quat, grain_odf]
+    return [grain_quat, grain_mis_quat, grain_odf, grain_mis_ang_deg, grain_avg_quat]
 
 # def process_dsgod_file_inv(dsgod_npz_dir, scan=24, compl_thresh=0.85, reg_lambda=None,
 #                                do_conn_comp=False, do_avg_ori=False, connectivity_type=18,
