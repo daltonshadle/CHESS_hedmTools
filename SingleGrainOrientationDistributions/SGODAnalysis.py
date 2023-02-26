@@ -578,6 +578,12 @@ def moments_plotting(col_x, col_y, df, col_k='kind',
         ylim=y_lim,
         height=5,
     )
+    plt.subplots_adjust(top=0.97,
+                        bottom=0.13,
+                        left=0.18,
+                        right=0.97,
+                        hspace=0.2,
+                        wspace=0.2)
     color = None
     legends=[]
     linestyle_list = ['-', (0, (1, 1)), (0, (3, 1, 1, 1)), '..']
