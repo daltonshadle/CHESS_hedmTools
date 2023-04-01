@@ -179,7 +179,6 @@ def chunk_detector(cfg_name, base_dim=(1944, 1536), n_rows_cols=(2, 2),
     new_icfg_dict = {}
     for key in icfg_dict.keys():
         new_icfg_dict[key] = icfg_dict[key]
-        print(key)
     new_icfg_dict['detectors'] = {}
     
     if updated_instr_path is None:

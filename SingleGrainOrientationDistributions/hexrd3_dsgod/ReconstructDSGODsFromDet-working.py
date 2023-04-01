@@ -118,8 +118,8 @@ def create_exp_map_grid(avg_exp_map, misorientation_bnd=1.0, misorientation_spac
     return all_exp_maps, ori_Xs.shape
     
 #%%
-misorientation_bnd = 0.3 # deg
-misorientation_spacing = 0.3 # deg
+misorientation_bnd = 2.5 # deg
+misorientation_spacing = 2.5 # deg
 threshold = 1
 pad_size = 5 # pixels
 interp = 'bilinear'
@@ -243,7 +243,7 @@ plot_xy = np.vstack(debug_xy)
 frame_xy = np.vstack([debug_panel_xy[1].flatten(), debug_panel_xy[0].flatten()]).T
 frame = debug_frame.flatten()
 
-ind = np.where(np.linalg.norm(frame_xy - plot_xy[int(plot_xy.shape[0]/2), :], axis=1) < 3)[0]
+ind = np.where(np.linalg.norm(frame_xy - plot_xy[int(plot_xy.shape[0]/2), :], axis=1) < 4)[0]
 frame_xy = frame_xy[ind, :]
 frame = frame[ind]
 

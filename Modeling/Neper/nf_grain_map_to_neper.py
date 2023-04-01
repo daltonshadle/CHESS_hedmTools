@@ -336,7 +336,17 @@ if do_reorder_ids:
 
     #vol_frac_conf_new = volume_fraction_conf(grain_map, conf_map) 
     
-    new_exp_maps = old_exp_maps[new_to_old_ids.flatten(), :]
+    # mechmet rotation crystal to sample test
+    do_inv_ori = True
+    if do_inv_ori:
+        logger.info("Using inverse orientations!")
+        # temp_exp_maps = old_exp_maps[new_to_old_ids.flatten(), :]
+        # temp_rot_mat = rot.rotMatOfExpMap(temp_exp_maps.T)
+        # for i in range(temp_rot_mat.shape[0]):
+        #     temp_rot_mat[i, :, :] = temp_rot_mat[i, :, :].T
+        new_exp_maps = -1 * old_exp_maps[new_to_old_ids.flatten(), :]
+    else:
+        new_exp_maps = old_exp_maps[new_to_old_ids.flatten(), :]
     new_quat = rot.quatOfExpMap(new_exp_maps.T)
     new_rod = OT.quat2rod(new_quat.T)
 
@@ -433,19 +443,24 @@ with open(run_neper_path, 'w') as f:
     f.write('MICRO_FN_OUT="${MY_PRE}"\n')
     f.write('MICRO_PNG_FN_OUT="${MY_PRE}_png"\n\n')
     
+    #f.write('# Fill voids in tesr with grow\n')
+    #f.write('neper -T -n from_morpho -domain "cube(%0.4f,%0.4f,%0.4f)" -morpho "tesr:file("${MICRO_FN_OUT}.tesr")" -transform "grow" -ori "file(%s [,des=rodrigues:%s])" -tesrformat ascii -format tesr -o "${MICRO_FN_OUT}_grow"\n' %(gm_shape[0]*voxel_size, gm_shape[1]*voxel_size, gm_shape[2]*voxel_size, rod_save_path, ori_conv))
+    
     f.write('# Visualize tesr\n')
-    f.write('neper -V "${MICRO_FN_OUT}.tesr" -datacellcol id -imagesize 1200:1200 -cameraangle 24 -print "${MICRO_PNG_FN_OUT}_tesr"\n')
-    f.write('neper -V "${MICRO_FN_OUT}.tesr" -datacellcol ori -datacellcolscheme "ipf(y)" -imagesize 1200:1200 -cameraangle 24 -print "${MICRO_PNG_FN_OUT}_ipfy_tesr"\n')
+    f.write('#neper -V "${MICRO_FN_OUT}.tesr" -datacellcol id -imagesize 1200:1200 -cameraangle 24 -print "${MICRO_PNG_FN_OUT}_tesr"\n')
+    f.write('#neper -V "${MICRO_FN_OUT}.tesr" -datacellcol ori -datacellcolscheme "ipf(y)" -imagesize 1200:1200 -cameraangle 24 -print "${MICRO_PNG_FN_OUT}_ipfy_tesr"\n')
     
     f.write('# Create tessellation\n')
-    f.write('neper -T -n from_morpho -domain "cube(%0.4f,%0.4f,%0.4f)" -morpho "tesr:file("${MICRO_FN_OUT}.tesr")" -morphooptiobjective "tesr:pts(region=surf, res=7)" -morphooptistop itermax=%i -transform "grow" -ori "file(%s [,des=rodrigues:%s])" -reg 1 -o "${MICRO_FN_OUT}"\n' %(gm_shape[0]*voxel_size, gm_shape[1]*voxel_size, gm_shape[2]*voxel_size, tess_max_iter, rod_save_path, ori_conv))
+    #f.write('neper -T -n from_morpho -domain "cube(%0.4f,%0.4f,%0.4f)" -morpho "tesr:file("${MICRO_FN_OUT}.tesr")" -morphooptiobjective "tesr:pts(region=surf, res=10)" -morphooptistop itermax=%i -ori "file(%s [,des=rodrigues:%s])" -reg 1 -o "${MICRO_FN_OUT}"\n' %(gm_shape[0]*voxel_size, gm_shape[1]*voxel_size, gm_shape[2]*voxel_size, tess_max_iter, rod_save_path, ori_conv))
+    f.write('neper -T -n from_morpho -domain "cube(%0.4f,%0.4f,%0.4f)" -morpho "tesr:file("${MICRO_FN_OUT}.tesr")" -morphooptiobjective "tesr:pts(region=surf, res=10)" -morphooptistop itermax=%i -ori "file(%s,des=rodrigues:%s)" -oricrysym %s -reg 1 -o "${MICRO_FN_OUT}_old"\n' %(gm_shape[0]*voxel_size, gm_shape[1]*voxel_size, gm_shape[2]*voxel_size, tess_max_iter, rod_save_path, ori_conv, ori_sym))
+    f.write('neper -T -loadtess "${MICRO_FN_OUT}_old.tess" -transform "renumber,resetcellid" -o "${MICRO_FN_OUT}"\n')
     
     f.write('# Visualize tessellation\n')
     f.write('neper -V "${MICRO_FN_OUT}.tess" -datacellcol id -imagesize 1200:1200 -cameraangle 24 -print "${MICRO_PNG_FN_OUT}_tess"\n')
     f.write('neper -V "${MICRO_FN_OUT}.tess" -datacellcol ori -datacellcolscheme "ipf(y)" -imagesize 1200:1200 -cameraangle 24 -print "${MICRO_PNG_FN_OUT}_ipfy_tess"\n')
     
     f.write('# Mesh tessellation\n')
-    f.write('neper -M "${MICRO_FN_OUT}.tess" -part 32:8 -for msh,fepx:legacy -rcl 1.0 -pl 1.5 -order 2 -faset z0,z1,x0,x1,y0,y1 -o "${MICRO_FN_OUT}"\n')
+    f.write('neper -M "${MICRO_FN_OUT}.tess" -part 32:8 -for msh,fepx:legacy -rcl 1.25 -pl 1.5 -order 2 -faset z0,z1,x0,x1,y0,y1 -o "${MICRO_FN_OUT}"\n')
     
     f.write('# Visualize mesh\n')
     f.write('neper -V "${MICRO_FN_OUT}.tess,${MICRO_FN_OUT}.msh" -dataelsetco id -imagesize 1200:1200 -cameraangle 24 -print "${MICRO_PNG_FN_OUT}_mesh"\n')
