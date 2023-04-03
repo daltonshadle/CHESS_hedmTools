@@ -127,8 +127,8 @@ def set_instr_calib_flags(init_instr,
     
     # first, add tilt calibration
     # This needs to come from the GUI input somehow
-    rme = rotations.RotMatEuler(np.zeros(3), 'xyz', extrinsic=True)
-    instr.tilt_calibration_mapping = rme
+    #rme = rotations.RotMatEuler(np.zeros(3), 'xyz', extrinsic=True)
+    #instr.tilt_calibration_mapping = rme
     
     # initialize calibration flags
     calibration_flags = instr_flags
@@ -150,7 +150,7 @@ def set_instr_calib_flags(init_instr,
     instr.calibration_flags = calibration_flags
 
     # last item for calibrating lattice parameter
-    calibration_flags = np.hstack([calibration_flags, 0])
+    calibration_flags = np.hstack([calibration_flags, False]).astype(bool)
     
     return calibration_flags, instr
 
@@ -269,6 +269,7 @@ powder calibration defaults:
 
 # path to hexrd config file with 2 panel dexela instrument and ceria powder images
 config_path = '/media/djs522/djs522_nov2020/dexela_distortion/kirks_dec_2022/dexela_90-524kev_ceo2_instr_config.yml'
+pd_data_exclusions = [0] #[3, 4, 6, 7]
 
 # new paths to hexrd instr and config file with multipanel chunked dexela instrument and ceria powder images
 # these will be created below, just a new path for these files is necessary
@@ -286,11 +287,11 @@ tilt_and_pos_chunk_instr_path = os.path.join(base_path, '4_dexela_90-524kev_ceo2
 tilt_and_pos_chunk_config_path = os.path.join(base_path, '4_dexela_90-524kev_ceo2_instr_mpanel_tilt_and_pos_config.yml')
 
 # additional instr calibration parameters
-tth_max = 10.0
+tth_max = 8.0
 visualize_plots = True
 
 # powder calibration parameters (can be compared with GUI)
-tth_tol = 0.25 # GUI: Annular sector widths 2_theta
+tth_tol = 0.15 # GUI: Annular sector widths 2_theta
 eta_tol = 1. # GUI : Annular sector widths eta
 fit_tth_tol = 0.15 # GUI : Max fit |delta 2_theta| / 2_theta_0 error
 min_peak_amp_raw_units = 1e-4 # GUI : Min Peak Amplitude (Raw Units)
@@ -334,6 +335,12 @@ if tth_tol is not None:
 if tth_max is not None:
     plane_data.exclusions = None
     plane_data.tThMax = np.radians(tth_max)
+
+curr_exclusions = plane_data.exclusions
+for i in pd_data_exclusions:
+    if i < curr_exclusions.size:
+        curr_exclusions[i] = True
+plane_data.exclusions = curr_exclusions
 
 # process initial fwhm
 if auto_guess_initial_fwhm:

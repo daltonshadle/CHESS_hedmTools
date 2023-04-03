@@ -189,7 +189,7 @@ if tth_max is not None:
 curr_exclusions = pd.exclusions
 for i in pd_data_exclusions:
     if i < curr_exclusions.size:
-        curr_exclusions[0] = True
+        curr_exclusions[i] = True
 pd.exclusions = curr_exclusions
 
 # intialize image series and image dict
