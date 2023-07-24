@@ -43,7 +43,7 @@ def mat_row_normalize(mat):
     """
     return np.divide(mat, np.linalg.norm(mat, axis=1)[:, None])
 
-def PlotFR(sym, ax):
+def PlotFR(sym, ax, elev=30, azim=45):
     if sym == 'cubic':
         [verts, plot_order, _, _]= CubPolytope()
 
@@ -58,7 +58,9 @@ def PlotFR(sym, ax):
         ax.set_xlabel('$R_x$')
         ax.set_ylabel('$R_y$')
         ax.set_zlabel('$R_z$')
-
+        
+        ax.view_init(elev=elev, azim=azim)
+        
         return ax
     else:
         print('Symmetry type not supported')

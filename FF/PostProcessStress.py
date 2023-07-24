@@ -49,9 +49,9 @@ pi = np.pi
 analysis_path = os.path.join(os.path.dirname(__file__).split('CHESS_hedmTools')[0], 'CHESS_hedmTools/Analysis/')
 
 # single crystal elastic moduli
-c11 = 259.6e3 #260e3 #MPa
-c12 = 179.0e3 #177e3 #MPa
-c44 = 109.6e3 #107e3 #MPa
+c11 = 259.6e3 # #MPa
+c12 = 179.0e3 # #MPa
+c44 = 109.6e3 # #MPa
 # c11 = 260e3 #MPa
 # c12 = 177e3 #MPa
 # c44 = 107e3 #MPa
@@ -66,7 +66,7 @@ INCONEL_718_SX_STIFF = np.array([[c11, c12, c12,   0,   0,   0],
                                  [  0,   0,   0,   0,   0, c44]])
 
 INCONEL_718_E = 199e9 # found from DIC measurements in elastic regime, averaged over 75 points
-INCONEL_718_nu = 0.2785 # found from DIC measurements in the elastic regime, averaged over 75 points, 0.321
+INCONEL_718_nu = 0.2785 #0.2785 # found from DIC measurements in the elastic regime, averaged over 75 points, 0.321
 INCONEL_718DP_Yield = 940e6 # macroscopic yield around this value
 INCONEL_718_SCHMID_TENSOR_LIST = [np.load(os.path.join(analysis_path, 'example_grains_out/inconel_718_schmid_tensors.npy'))]
 
@@ -128,11 +128,73 @@ def voigt_x(ang, in_deg=True):
     c2 = c**2
     s2 = s**2
     return np.array([[  1,    0,   0,      0,   0,   0], 
+                     [  0,   c2,  s2,    s*c,   0,   0], 
+                     [  0,   s2,  c2,   -s*c,   0,   0], 
+                     [  0, -s*c, s*c,  c2-s2,   0,   0], 
+                     [  0,    0,   0,      0,   c,  -s], 
+                     [  0,    0,   0,      0,   s,   c]])
+
+def voigt_x_s(ang, in_deg=True):
+    '''
+    function for transformtion voight stress about the x-axis
+
+    Parameters
+    ----------
+    ang : float
+        angle to rotate around x-axis, can be radians or degrees with in_deg
+        flag set
+    in_deg : bool, optional
+        True = ang is in degrees. The default is True.
+
+    Returns
+    -------
+    (6 x 6) numpy array
+        transformation matrix for rotation about x-axis by ang.
+
+    '''
+    if in_deg:
+        ang = np.radians(ang)
+    c = np.cos(ang)
+    s = np.sin(ang)
+    c2 = c**2
+    s2 = s**2
+    return np.array([[  1,    0,   0,      0,   0,   0], 
                      [  0,   c2,  s2,  2*s*c,   0,   0], 
                      [  0,   s2,  c2, -2*s*c,   0,   0], 
                      [  0, -s*c, s*c,  c2-s2,   0,   0], 
                      [  0,    0,   0,      0,   c,  -s], 
                      [  0,    0,   0,      0,   s,   c]])
+
+def voigt_x_e(ang, in_deg=True):
+    '''
+    function for transformtion voight strain about the x-axis
+
+    Parameters
+    ----------
+    ang : float
+        angle to rotate around x-axis, can be radians or degrees with in_deg
+        flag set
+    in_deg : bool, optional
+        True = ang is in degrees. The default is True.
+
+    Returns
+    -------
+    (6 x 6) numpy array
+        transformation matrix for rotation about x-axis by ang.
+
+    '''
+    if in_deg:
+        ang = np.radians(ang)
+    c = np.cos(ang)
+    s = np.sin(ang)
+    c2 = c**2
+    s2 = s**2
+    return np.array([[  1,      0,     0,      0,   0,   0], 
+                     [  0,     c2,    s2,    s*c,   0,   0], 
+                     [  0,     s2,    c2,   -s*c,   0,   0], 
+                     [  0, -2*s*c, 2*s*c,  c2-s2,   0,   0], 
+                     [  0,      0,     0,      0,   c,  -s], 
+                     [  0,      0,     0,      0,   s,   c]])
 
 def voigt_z(ang, in_deg=True):
     # voigt_z - Voigt notation transformation for a rotation about z-axis by 
@@ -164,6 +226,69 @@ def voigt_z(ang, in_deg=True):
                      [   0,   0,  0,  c, -s,      0], 
                      [   0,   0,  0,  s,  c,      0],
                      [-s*c, s*c,  0,  0,  0,  c2-s2]])
+
+def voigt_z_s(ang, in_deg=True):
+    '''
+    function for transformtion voight stress about the z-axis
+
+    Parameters
+    ----------
+    ang : float
+        angle to rotate around x-axis, can be radians or degrees with in_deg
+        flag set
+    in_deg : bool, optional
+        True = ang is in degrees. The default is True.
+
+    Returns
+    -------
+    (6 x 6) numpy array
+        transformation matrix for rotation about z-axis by ang.
+
+    '''
+    if in_deg:
+        ang = np.radians(ang)
+    c = np.cos(ang)
+    s = np.sin(ang)
+    c2 = c**2
+    s2 = s**2
+    return np.array([[  c2,  s2,  0,  0,  0,  2*s*c], 
+                     [  s2,  c2,  0,  0,  0, -2*s*c], 
+                     [   0,   0,  1,  0,  0,      0], 
+                     [   0,   0,  0,  c, -s,      0], 
+                     [   0,   0,  0,  s,  c,      0],
+                     [-s*c, s*c,  0,  0,  0,  c2-s2]])
+
+def voigt_z_e(ang, in_deg=True):
+    '''
+    function for transformtion voight strain about the z-axis
+
+    Parameters
+    ----------
+    ang : float
+        angle to rotate around x-axis, can be radians or degrees with in_deg
+        flag set
+    in_deg : bool, optional
+        True = ang is in degrees. The default is True.
+
+    Returns
+    -------
+    (6 x 6) numpy array
+        transformation matrix for rotation about z-axis by ang.
+
+    '''
+    if in_deg:
+        ang = np.radians(ang)
+    c = np.cos(ang)
+    s = np.sin(ang)
+    c2 = c**2
+    s2 = s**2
+    return np.array([[    c2,    s2,  0,  0,  0,    s*c], 
+                     [    s2,    c2,  0,  0,  0,   -s*c], 
+                     [     0,     0,  1,  0,  0,      0], 
+                     [     0,     0,  0,  c, -s,      0], 
+                     [     0,     0,  0,  s,  c,      0],
+                     [-2*s*c, 2*s*c,  0,  0,  0,  c2-s2]])
+
 
 def gen_sx_stiffness_tensor_in_sample_coord(grain_data, SX_STIFF=INCONEL_718_SX_STIFF):
     # gen_sx_stiffness_tensor_in_sample_coord - generates the Voigt notation
@@ -199,14 +324,22 @@ def gen_sx_stiffness_tensor_in_sample_coord(grain_data, SX_STIFF=INCONEL_718_SX_
         # coordinate systemusing using single grain orientation
         gr_rot_mat = hexrd_rot.rotMatOfExpMap(gr_exp_map)
         gr_euler_zxz = hexrd_rot.angles_from_rmat_zxz(gr_rot_mat)
-        r_z1 = voigt_z(gr_euler_zxz[0], in_deg=False)
-        r_x = voigt_x(gr_euler_zxz[1], in_deg=False)
-        r_z2 = voigt_z(gr_euler_zxz[2], in_deg=False)
-        gr_rot_mat_voigt = r_z2 @ r_x @ r_z1
-        gr_rot_stiff = gr_rot_mat_voigt @ SX_STIFF @ gr_rot_mat_voigt.T
+        
+        r_z1_s = voigt_z_s(gr_euler_zxz[0], in_deg=False)
+        r_x_s = voigt_x_s(gr_euler_zxz[1], in_deg=False)
+        r_z2_s = voigt_z_s(gr_euler_zxz[2], in_deg=False)
+        
+        r_z1_e = voigt_z_e(gr_euler_zxz[0], in_deg=False)
+        r_x_e = voigt_x_e(gr_euler_zxz[1], in_deg=False)
+        r_z2_e = voigt_z_e(gr_euler_zxz[2], in_deg=False)
+        
+        gr_rot_mat_voigt_s = r_z2_s @ r_x_s @ r_z1_s
+        gr_rot_mat_voigt_e = r_z2_e @ r_x_e @ r_z1_e
+        gr_rot_stiff = np.linalg.inv(gr_rot_mat_voigt_s) @ SX_STIFF @ gr_rot_mat_voigt_e
         sx_stiff_samp[i] = gr_rot_stiff
     
     return sx_stiff_samp
+
 
 def gen_rand_text_stiffness_tensor_in_sample_coord(angs, SX_STIFF=INCONEL_718_SX_STIFF):
     # gen_sx_stiffness_tensor_in_sample_coord - generates the Voigt notation
@@ -246,9 +379,37 @@ def gen_rand_text_stiffness_tensor_in_sample_coord(angs, SX_STIFF=INCONEL_718_SX
     
     return sx_stiff_samp
 
+def coaxiality(primary, secondary):
+    '''
+    function for determine the coaxiality of vectors
+
+    Parameters
+    ----------
+    primary : (1 x n) numpy array
+        primary vector for defining reference of coaxiality metric.
+    secondary : (m x n) numpy array
+        secondary vectors for finding coaxiallity of.
+
+    Returns
+    -------
+    coaxiality_deg : (m x 1) numpy array
+        coaxiality metrix in degrees.
+
+    '''
+    dot = np.dot(primary, secondary.T)
+    primary_norm = np.linalg.norm(primary)
+    if primary_norm == 0:
+        primary_norm = 1
+    secondary_norm = np.linalg.norm(secondary.T, axis=0)
+    secondary_norm[secondary_norm == 0] = 1
+    coaxiality_deg =  np.degrees(np.arccos(dot / (primary_norm * secondary_norm))).T
+    return coaxiality_deg
+    
+
 def post_process_stress(grain_data, SX_STIFF=INCONEL_718_SX_STIFF, 
                         schmid_T_list=None, stress_macro=None,
-                        only_sample_stress=False):
+                        only_sample_stress=False, macro_load_dir=1,
+                        CRSS=400):
     # func_name - func description
     # 
     #   INPUT:
@@ -275,22 +436,29 @@ def post_process_stress(grain_data, SX_STIFF=INCONEL_718_SX_STIFF,
     if schmid_T_list is not None:
         num_slip_systems=schmid_T_list.shape[0]
         RSS=np.zeros([num_grains,num_slip_systems])
+        RSE=np.zeros([num_grains,num_slip_systems])
     
     # initialize return structures
     stress_mat_samp = np.zeros([num_grains, 6])
     if not only_sample_stress:
         stress_mat_crys = np.zeros([num_grains, 6])
-        hydrostatic=np.zeros([num_grains, 1])
-        pressure=np.zeros([num_grains, 1])
-        von_mises=np.zeros([num_grains, 1])
-        stress_coaxiality=np.zeros([num_grains, 1])
+        hydrostatic = np.zeros([num_grains, 1])
+        pressure = np.zeros([num_grains, 1])
+        von_mises = np.zeros([num_grains, 1])
+        stress_coaxiality = np.zeros([num_grains, 1])
+        prinicial_vals = np.zeros([num_grains, 3])
+        prinicial_dirs = np.zeros([num_grains, 9])
+        stress_concen_factor = np.zeros([num_grains, 1])
+        
+        # stiffness metrics
+        embedded_dir_stiff = np.zeros([num_grains, 1])
+        iso_sx_dir_stiff = np.zeros([num_grains,  1])
     
     # for each grain in the output
     for i in np.arange(num_grains):
         # grab exp map and convert strain vec to true strain vec for grain i
         gr_exp_map = np.atleast_2d(grain_data[i, 3:6]).T
         gr_strain_samp_v = np.atleast_2d(grain_data[i, 15:21]).T
-        #gr_strain_samp_v[3:6] = 2 * gr_strain_samp_v[3:6] # TODO: check if this is needed
         
         # get the crys -> samp rotation as matrix for grain i
         gr_rot_mat = hexrd_rot.rotMatOfExpMap_opt(gr_exp_map)
@@ -299,7 +467,8 @@ def post_process_stress(grain_data, SX_STIFF=INCONEL_718_SX_STIFF,
         gr_strain_samp_t = hexrd_mat.strainVecToTen(gr_strain_samp_v)
         
         # transform strain tensor samp -> crys for grain i
-        gr_strain_crys_v = hexrd_mat.strainTenToVec(np.dot(gr_rot_mat.T, np.dot(gr_strain_samp_t, gr_rot_mat)))
+        gr_strain_crys_t = np.dot(gr_rot_mat.T, np.dot(gr_strain_samp_t, gr_rot_mat))
+        gr_strain_crys_v = hexrd_mat.strainTenToVec(gr_strain_crys_t)
                     
         # apply single crystal stiffness tensor for stress in crys coord as vector and tensor
         gr_stress_crys_v = np.dot(SX_STIFF, gr_strain_crys_v)
@@ -322,13 +491,25 @@ def post_process_stress(grain_data, SX_STIFF=INCONEL_718_SX_STIFF,
                     
             # Project on to slip systems
             if schmid_T_list is not None:
-                for j in np.arange(num_slip_systems):        
+                for j in np.arange(num_slip_systems):   
                     RSS[i,j]=(gr_stress_crys_t * schmid_T_list[j,:,:]).sum()
+                    RSE[i,j]=(gr_strain_crys_t * schmid_T_list[j,:,:]).sum()
             
             # find stress coaxiality
             if stress_macro is not None:
-                stress_contraction = np.dot(stress_macro.T, gr_stress_samp_v)
-                stress_coaxiality[i] = (np.arccos(stress_contraction / (np.linalg.norm(stress_macro) * np.linalg.norm(gr_stress_samp_v))) * 180 / np.pi) 
+                stress_coaxiality[i] = coaxiality(stress_macro, gr_stress_samp_v.T)
+                embedded_dir_stiff[i] = stress_macro[0, macro_load_dir]
+                if gr_strain_samp_v[macro_load_dir, 0] != 0:
+                    embedded_dir_stiff[i] = embedded_dir_stiff[i] / gr_strain_samp_v[macro_load_dir, 0]
+                
+                stiff_s = gen_sx_stiffness_tensor_in_sample_coord(np.atleast_2d(grain_data[i, :]), SX_STIFF=SX_STIFF)
+                iso_sx_dir_stiff[i] = stiff_s[0, macro_load_dir, macro_load_dir]
+                
+                if stress_macro[0, macro_load_dir] > 0:
+                    stress_concen_factor[i, 0] = np.max(prin_vals) / stress_macro[0, macro_load_dir]
+                elif stress_macro[0, macro_load_dir] < 0:
+                    stress_concen_factor[i, 0] = np.min(prin_vals) / stress_macro[0, macro_load_dir]
+            
             
         # package stress for returning
         stress_mat_samp[i] = gr_stress_samp_v.T
@@ -337,6 +518,8 @@ def post_process_stress(grain_data, SX_STIFF=INCONEL_718_SX_STIFF,
             hydrostatic[i, 0] = hydrostatic_stress
             pressure[i, 0] = -hydrostatic_stress
             von_mises[i, 0] = von_mises_stress
+            prinicial_vals[i, :] = prin_vals
+            prinicial_dirs[i, :] = np.hstack([prin_dirs[:, 0], prin_dirs[:, 1], prin_dirs[:, 2]])
     
     stress_data=dict()    
     
@@ -346,13 +529,21 @@ def post_process_stress(grain_data, SX_STIFF=INCONEL_718_SX_STIFF,
         stress_data['hydrostatic'] = hydrostatic
         stress_data['pressure'] = pressure
         stress_data['von_mises'] = von_mises
-        stress_data['triaxiality'] = hydrostatic / von_mises
+        triax = np.copy(hydrostatic)
+        triax[von_mises != 0] = triax[von_mises != 0] / von_mises[von_mises != 0]
+        triax[von_mises == 0] = 0
+        stress_data['triaxiality'] = triax
         stress_data['coaxiality'] = stress_coaxiality
-        stress_data['principal_val'] = prin_vals
-        stress_data['principal_dir'] = prin_dirs
+        stress_data['principal_val'] = prinicial_vals
+        stress_data['principal_dir'] = prinicial_dirs
+        stress_data['embedded_dir_stiff'] = embedded_dir_stiff
+        stress_data['iso_sx_dir_stiff'] = iso_sx_dir_stiff
+        stress_data['stress_concen_factor'] = stress_concen_factor
     
     if schmid_T_list is not None:
         stress_data['RSS'] = RSS
+        stress_data['RSE'] = RSE
+        stress_data['num_active_slip_systems'] = np.atleast_2d(np.sum(np.abs(RSS) > CRSS, axis=1)).T
         
     return stress_data
 
@@ -391,6 +582,7 @@ def post_process_stress_old(grain_data, SX_STIFF=INCONEL_718_SX_STIFF, schmid_T_
     
         expMap=np.atleast_2d(grain_data[jj,3:6]).T    
         strainTmp=np.atleast_2d(grain_data[jj,15:21]).T
+        strainTmp[3:6] /= 2
         
         #Turn exponential map into an orientation matrix
         Rsc=hexrd_rot.rotMatOfExpMap(expMap)
@@ -429,7 +621,8 @@ def post_process_stress_old(grain_data, SX_STIFF=INCONEL_718_SX_STIFF, schmid_T_
         #Project on to slip systems
         if schmid_T_list is not None:
             for ii in np.arange(num_slip_systems):        
-                RSS[jj,ii]=np.abs((stressTenC*schmid_T_list[ii,:,:]).sum())
+                #RSS[jj,ii]=np.abs((stressTenC*schmid_T_list[ii,:,:]).sum())
+                RSS[jj,ii]=((stressTenC*schmid_T_list[ii,:,:]).sum())
             
             
         stress_S[jj,:]=stressVecS.flatten()
@@ -451,6 +644,11 @@ def post_process_stress_old(grain_data, SX_STIFF=INCONEL_718_SX_STIFF, schmid_T_
         stress_data['RSS']=RSS
         
     return stress_data
+
+def von_mises(d):
+    return np.sqrt((d[:, 0] - d[:, 1])**2 + (d[:, 1] - d[:, 2])**2 + (d[:, 2] - d[:, 0])**2 
+                   + 6 * (d[:, 3]**2 + d[:, 4]**2 + d[:, 5]**2)) / np.sqrt(2)
+    
 
 def gen_schmid_tensors_from_cfg(cfg_yaml, uvw, hkl):        
     # func_name - func description
@@ -517,7 +715,6 @@ def gen_schmid_tensors_from_pd(pd, uvw, hkl):
     for i in range(num_slip_plane):
         planeID = np.where(abs(np.dot(n_plane_sym[:, i],slipdir_sym)) < 1.e-8)[0]
         for j in np.arange(planeID.shape[0]):    
-            print(slipdir_sym[:, planeID[j]], n_plane_sym[:, i])
             T[counter, :, :] = np.dot(slipdir_sym[:, planeID[j]].reshape(3, 1), n_plane_sym[:, i].reshape(1, 3))
             counter+=1
     #Clean some round off errors        
@@ -775,6 +972,7 @@ def voigt_reuss_bounds(grain_mat_list, macro_strain_s_v_list, macro_stress_s_v_l
         reuss_strain_s_v = np.mean(reuss_strain_s_v, axis=1)
         # voigt_stress_s_v = np.matmul(C, np.mean(gr_strain_s_v, axis=1))
         
+        print('Macro Stress: %0.2f MPa' %(macro_stress_s_v[1]))
         print('Voigt Stress Bound (Upper): %0.2f MPa' %(voigt_stress_s_v[1]))
         print('Reuss Strain Bound (Lower): %0.2f MPa' %(E/1e6 * reuss_strain_s_v[1]))
         print('Voigt-Reuss-Hill Average: %0.2f MPa' %((voigt_stress_s_v[1] + E/1e6 * reuss_strain_s_v[1]) / 2))
@@ -788,7 +986,9 @@ def voigt_reuss_bounds(grain_mat_list, macro_strain_s_v_list, macro_stress_s_v_l
 def fit_sx_moduli_with_ff_data(grain_mat_list, macro_stress_list, 
                                c11=c11, c12=c12, c44=c44, 
                                comp_thresh=0.8, chi2_thresh=1e-2,
-                               fit_E=True, E=INCONEL_718_E):
+                               fit_E=True, E=INCONEL_718_E,
+                               bounds=[np.array([200e3, 100e3, 50e3]),
+                                       np.array([300e3, 200e3, 150e3])]):
     # func_name - func description
     # 
     #   INPUT:
@@ -865,9 +1065,9 @@ def fit_sx_moduli_with_ff_data(grain_mat_list, macro_stress_list,
         input_macro_stress[i*n_s_comp + 1] = macro_stress_list[i]
 
     if fit_E:
-        popt, pcov = curve_fit(obj_func_sx_moduli_with_E, grain_mat_list_dict, input_macro_stress)
+        popt, pcov = curve_fit(obj_func_sx_moduli_with_E, grain_mat_list_dict, input_macro_stress, bounds=bounds)
     else:
-        popt, pcov = curve_fit(obj_func_sx_moduli, grain_mat_list_dict, input_macro_stress)
+        popt, pcov = curve_fit(obj_func_sx_moduli, grain_mat_list_dict, input_macro_stress, bounds=bounds)
 
 
     # pull single crystal moduli after optimizing, calculate the average stress state
@@ -997,6 +1197,7 @@ def plot_strength_curve(tau_star, w_tau, macro_strain=None, plot_color='blue'):
     if macro_strain is None:
         macro_strain=np.arange(len(tau_star))
     
+    plt.figure()
     tau_star = np.array(tau_star).flatten()
     macro_strain = np.array(macro_strain).flatten()
     strain_fine = np.linspace(macro_strain[0], macro_strain[-1], 100) 
@@ -1077,7 +1278,8 @@ if __name__ == '__main__':
         ind_thresh = np.where((grain_mat[:, 1] >= comp_thresh) & (grain_mat[:, 2] <= chi2_thresh))
         grain_mat_list.append(grain_mat[ind_thresh])
     
-    test_schmid_tesnors = False
+    test_schmid_tesnors = True
+    schmid_tensors = None
     if test_schmid_tesnors:
         cfg = os.path.join(analysis_path, 'example_ff_config.yml')
         schmid_tensors = gen_schmid_tensors_from_cfg(cfg, np.array([[1, 1, 0]]).T, np.array([[1, 1, 1]]).T)
@@ -1090,19 +1292,25 @@ if __name__ == '__main__':
         plot_strength_curve(tau_star_list, w_tau_list, macro_strain=macro_strain, plot_color='blue')
     
     # test stress calc and stiffness calc
-    test_stress_and_stiffness_calc = False
+    test_stress_and_stiffness_calc = True
     if test_stress_and_stiffness_calc:
-        grain_mat = np.copy(grain_mat_list[0])
+        step = 3
+        grain_mat = np.copy(grain_mat_list[step])
         grain_strains = np.copy(grain_mat)[:, 15:]
-        grain_strains[:, 3:] = grain_strains[:, 3:] * 2
         sx_stiff_temp = gen_sx_stiffness_tensor_in_sample_coord(np.copy(grain_mat), SX_STIFF=INCONEL_718_SX_STIFF)
         stress_1 = np.einsum('ijk,ik->ij', sx_stiff_temp, grain_strains)
-        stress_2 = post_process_stress(np.copy(grain_mat), SX_STIFF=INCONEL_718_SX_STIFF)['stress_S']
-        stress_3 = post_process_stress_old(grain_mat, INCONEL_718_SX_STIFF, schmid_T_list=None)['stress_S']
+        stress_2 = post_process_stress(np.copy(grain_mat), SX_STIFF=INCONEL_718_SX_STIFF, 
+                                       stress_macro=np.array([[0, macro_stress[step], 0, 0, 0, 0]]),
+                                       schmid_T_list=schmid_tensors)
+        stress_3 = post_process_stress_old(np.copy(grain_mat), SX_STIFF=INCONEL_718_SX_STIFF, schmid_T_list=schmid_tensors)
         
-        print(np.linalg.norm(stress_1 - stress_2, axis=0).max())
-        print(np.linalg.norm(stress_1 - stress_3, axis=0).max())
-        print(np.linalg.norm(stress_3 - stress_2, axis=0).max())
+        print(np.linalg.norm(stress_1 - stress_2['stress_S'], axis=0).max())
+        print(np.linalg.norm(stress_1 - stress_3['stress_S'], axis=0).max())
+        print(np.linalg.norm(stress_3['stress_S'] - stress_2['stress_S'], axis=0).max())
+        
+        print(np.linalg.norm(stress_3['RSS'] - stress_2['RSS'], axis=0).max())
+        
+        
     
     
     # test optimization code

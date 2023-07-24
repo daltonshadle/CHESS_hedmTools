@@ -516,7 +516,7 @@ def evaluate_powder_fit(powder_config_file,
 
     # extract powder line positions (tth, eta) + (det_x, det_y) from exp. and sim. 
     # *************************************************************************
-    print("Extracting Experimental Powder Line Fits")
+    print("Extracting Experimental Powder Line Fits %i" %(eta_centers.size))
     exp_line_data = hedm_instr.extract_line_positions(pd, img_dict, 
                                                    eta_centers=eta_centers,
                                                    collapse_eta=True,
@@ -524,7 +524,7 @@ def evaluate_powder_fit(powder_config_file,
                                                    eta_tol=eta_tol,
                                                    tth_tol=tth_tol)
 
-    print("Extracting Siimulated Powder Line Fits")
+    print("Extracting Siimulated Powder Line Fits %i" %(eta_centers.size))
     # pow_angs, pow_xys, tth_ranges = panel.make_powder_rings(
     #     plane_data, merge_hkls=True,
     #     delta_tth=tth_tol, delta_eta=eta_tol,
@@ -561,37 +561,39 @@ def evaluate_powder_fit(powder_config_file,
             sim = []
             exp = []
             for i_set, temp in enumerate(ringset):
-                # simulated data
-                sim_angs = sim_line_data[key][i_ring][i_set][0]
-                sim_inten = sim_line_data[key][i_ring][i_set][1]
-                sim_tth_centers = np.average(np.vstack([sim_angs[0][:-1], sim_angs[0][1:]]), axis=0)
-                sim_eta_ref = sim_angs[1]
-                sim_int_centers = np.average(np.vstack([sim_inten[0][:-1], sim_inten[0][1:]]), axis=0)
-                
-                # experimental data
-                exp_angs = exp_line_data[key][i_ring][i_set][0]
-                exp_inten = exp_line_data[key][i_ring][i_set][1]
-                exp_tth_centers = np.average(np.vstack([exp_angs[0][:-1], exp_angs[0][1:]]), axis=0)
-                exp_eta_ref = exp_angs[1]
-                exp_int_centers = np.average(np.vstack([exp_inten[0][:-1], exp_inten[0][1:]]), axis=0)
-                
-                if sim_tth_centers.size == sim_int_centers.size and exp_tth_centers.size == exp_int_centers.size:
-                    # peak profile fitting
-                    p0 = fitpeak.estimate_pk_parms_1d(sim_tth_centers, sim_int_centers, pktype)
-                    p = fitpeak.fit_pk_parms_1d(p0, sim_tth_centers, sim_int_centers, pktype)
-                    sim_tth_meas = p[1]
-                    #sim_tth_avg = np.average(sim_tth_centers, weights=sim_int_centers)
+                if len(sim_line_data[key][i_ring][i_set][1]) > 0 and len(exp_line_data[key][i_ring][i_set][1]) > 0:
+                    # simulated data
+                    sim_angs = sim_line_data[key][i_ring][i_set][0]
+                    sim_inten = sim_line_data[key][i_ring][i_set][1]
+                    sim_eta_ref = sim_angs[1]
                     
-                    p0 = fitpeak.estimate_pk_parms_1d(exp_tth_centers, exp_int_centers, pktype)
-                    p = fitpeak.fit_pk_parms_1d(p0, exp_tth_centers, exp_int_centers, pktype)
-                    exp_tth_meas = p[1]
-                    #exp_tth_avg = np.average(exp_tth_centers, weights=exp_int_centers)
+                    sim_tth_centers = np.average(np.vstack([sim_angs[0][:-1], sim_angs[0][1:]]), axis=0)
+                    sim_int_centers = np.average(np.vstack([sim_inten[0][:-1], sim_inten[0][1:]]), axis=0)
                     
-                    sim_tth_eta = np.vstack([sim_tth_meas, sim_eta_ref]).T
-                    exp_tth_eta = np.vstack([exp_tth_meas, exp_eta_ref]).T
+                    # experimental data
+                    exp_angs = exp_line_data[key][i_ring][i_set][0]
+                    exp_inten = exp_line_data[key][i_ring][i_set][1]
+                    exp_eta_ref = exp_angs[1]
+                    exp_tth_centers = np.average(np.vstack([exp_angs[0][:-1], exp_angs[0][1:]]), axis=0)
+                    exp_int_centers = np.average(np.vstack([exp_inten[0][:-1], exp_inten[0][1:]]), axis=0)
                     
-                    sim.append(sim_tth_eta)
-                    exp.append(exp_tth_eta)
+                    if sim_tth_centers.size == sim_int_centers.size and exp_tth_centers.size == exp_int_centers.size:
+                        # peak profile fitting
+                        p0 = fitpeak.estimate_pk_parms_1d(sim_tth_centers, sim_int_centers, pktype)
+                        p = fitpeak.fit_pk_parms_1d(p0, sim_tth_centers, sim_int_centers, pktype)
+                        sim_tth_meas = p[1]
+                        #sim_tth_avg = np.average(sim_tth_centers, weights=sim_int_centers)
+                        
+                        p0 = fitpeak.estimate_pk_parms_1d(exp_tth_centers, exp_int_centers, pktype)
+                        p = fitpeak.fit_pk_parms_1d(p0, exp_tth_centers, exp_int_centers, pktype)
+                        exp_tth_meas = p[1]
+                        #exp_tth_avg = np.average(exp_tth_centers, weights=exp_int_centers)
+                        
+                        sim_tth_eta = np.vstack([sim_tth_meas, sim_eta_ref]).T
+                        exp_tth_eta = np.vstack([exp_tth_meas, exp_eta_ref]).T
+                        
+                        sim.append(sim_tth_eta)
+                        exp.append(exp_tth_eta)
             
             if len(sim) > 0:
                 # convert to numpy array
@@ -706,15 +708,91 @@ def evaluate_powder_fit(powder_config_file,
     # evaluate detector simulation to experiment fit
     eval_det_dict, eval_total = eval_tth_eta(pd, hedm_instr, sim_det_data, exp_det_data)
     
-    return eval_total, eval_det_dict, sim_det_data, exp_det_data
+    return eval_total, eval_det_dict, sim_det_data, exp_det_data, sim_line_data, exp_line_data
 
+def index_hkl_ring_pixels(powder_config_file,
+                        tth_max=None,
+                        plane_data_exclusions=[],
+                        strainMag=0.0025,
+                        plots=True,
+                        save_path=None):
+    '''
+
+    Parameters
+    ----------
+    powder_config_file : string
+        path to hexrd config file (not instr config file).
+    tth_max : float, optional
+        twotheta maximum for fitting powder lines. The default is None.
+    plane_data_exclusions : array, optional
+       array for indcies of hkl planes to exclude from evaluation. The default is [].
+    strainMag : float, optional
+        strain resolution in tth ranges . The default is 0.0025.
+    plots : bool, optional
+        flag for showing plots during evaluation. The default is True.
+    save_path : string, optional
+        if not None, path to save plots and data. The default is None.
+
+    Returns
+    -------
+    mask_dict : dict
+        dictornary keyed on detector keys of hkl rings index masks. The background 
+        has index = -1 (no ring) and the first ring has the index = 0.
+
+    '''
+    
+    # process user input 
+    # *************************************************************************
+    
+    # open hexrd config file
+    cfg = config.open(powder_config_file)[0]
+
+    # initialize instruments
+    instr = cfg.instrument
+    hedm_instr = instr.hedm
+
+    # initialize ceria material 
+    matl = make_matl('ceria', 225, [5.41153, ])
+    matl.beamEnergy = hedm_instr.beam_energy
+    pd = matl.planeData
+    if tth_max is not None:
+        pd.exclusions = None
+        pd.tThMax = np.radians(tth_max)
+
+    curr_exclusions = pd.exclusions
+    for i in plane_data_exclusions:
+        if i < curr_exclusions.size:
+            curr_exclusions[i] = True
+    pd.exclusions = curr_exclusions
+
+    # get instrument tth, eta mask
+    mask_dict = {}
+    for key in hedm_instr.detectors.keys():
+        panel_tth, panel_eta = hedm_instr.detectors[key].pixel_angles()
+        mask_dict[key] = np.ones(panel_tth.shape) * -1
+        
+        tth_ranges = pd.getTThRanges(strainMag=strainMag)
+        for i, tth_range in enumerate(tth_ranges):
+            tth_range_ind = (panel_tth >= tth_range[0]) & (panel_tth <= tth_range[1])
+            mask_dict[key][tth_range_ind] = i
+        
+        if plots:
+            fig_image = plt.figure()
+            fig_image.suptitle(key)
+            plt.imshow(mask_dict[key])
+            plt.show()
+            if save_path is not None:
+                fig_image.savefig(os.path.join(save_path, cfg.analysis_name + '_%s_hkl_index_mask.png' %(key)))
+    
+    return mask_dict
 
 #%% testing 
 if __name__ == "__main__":
     powder_config_file = '/media/djs522/djs522_nov2020/dexela_distortion/data_for_simon/dexela_61-332kev_ceo2_mruby_instr_config.yml'
-    powder_config_file = '/media/djs522/djs522_nov2020/dexela_distortion/data_for_simon/dexela_61-332kev_ceo2_mruby_final_mpanel_instr_config.yml'
+    #powder_config_file = '/media/djs522/djs522_nov2020/dexela_distortion/data_for_simon/dexela_61-332kev_ceo2_mruby_final_mpanel_instr_config.yml'
+    #powder_config_file = '/media/djs522/djs522_nov2020/dexela_distortion/data_for_simon/dexela_61-332kev_ceo2_mruby_simon_instr_config.yml'
     
-    eval_total, eval_det_dict, sim_det_data, exp_det_data = evaluate_powder_fit(powder_config_file,
+    eval_total, eval_det_dict, sim_det_data, exp_det_data, t1, t2 = evaluate_powder_fit(powder_config_file,
                             eta_tol=1.0,
                             tth_tol=0.2,
                             tth_max=14.0,
@@ -725,4 +803,9 @@ if __name__ == "__main__":
                             apply_dis_sim=False,
                             plots=True,
                             save_path='/media/djs522/djs522_nov2020/dexela_distortion/data_for_simon/')
-
+    hkl_mask_dict = index_hkl_ring_pixels(powder_config_file,
+                            tth_max=14.0,
+                            plane_data_exclusions=[],
+                            strainMag=0.01,
+                            plots=True,
+                            save_path='/media/djs522/djs522_nov2020/dexela_distortion/data_for_simon/')

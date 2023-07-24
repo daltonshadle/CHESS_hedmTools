@@ -29,6 +29,7 @@ import matplotlib.cm as cm
 from scipy.optimize import curve_fit
 from scipy.stats import gaussian_kde
 from scipy.interpolate import interp1d
+import scipy.sparse.csgraph as scipy_graph
 
 from hexrd              import matrixutil as hexrd_mat
 import hexrd.fitting.fitpeak as fitpeaks
@@ -159,8 +160,11 @@ def init_correct_chess_vertical_beam_variation_extra(grains_out, vert_bnds=[-0.0
         plt.ylabel('volumetric strain')
     
     n_grains=len(good_grains)
+    print('Number of grains fit: %i' %(n_grains))
     print('Energy / Volumetric Strain Slope: %0.3e mm^-1' %(p[0]))
     print('Constant Term: %0.3e (if larger than 1e-4 consider using following plots/output to adjust lattice parameter(s)' %(p[1]))
+    print('Hydrostatic Strain [Med, Mean] %0.3e, %0.3e' %(np.median(new_v_strain_0), np.mean(new_v_strain_0)))
+    
     
     astrain = np.zeros(n_grains)
     bstrain = np.zeros(n_grains)
@@ -343,7 +347,42 @@ def grain_COM_in_diffraction_volume(grains_out,
     None.
 
     '''
+
+def combine_grains_out(grains_out, dist_thresh=0.05, ori_ang_thresh=0.15, sym='Oh'):
+    ori_ang_thresh = np.deg2rad(ori_ang_thresh) #deg->rad
+
+    n_grains = grains_out.shape[0]
+    dup_graph = np.zeros([n_grains, n_grains])
+    print('Total number of old grains: %i' %(n_grains))
     
+    all_quats = hexrd_rot.quatOfExpMap(grains_out[:, 3:6].T)
+    all_quats = hexrd_sym.toFundamentalRegion(all_quats, crysSym=sym)
+    
+    for i in range(n_grains):
+        g = grains_out[i, :]
+        
+        dist = np.linalg.norm(grains_out[:, 6:9] - g[6:9], axis=1)
+        [ori, a] = hexrd_rot.misorientation(np.atleast_2d(all_quats[:, i]).T, all_quats)
+        
+        close_ids = ((dist <= dist_thresh) & (ori <= ori_ang_thresh))
+        dup_graph[i, :] = close_ids.astype(int)
+        
+    dup_count = np.sum(dup_graph, axis=0)
+    
+    print('Maximum duplicate for 1 grain: %i' %(dup_count.max()))
+    print('Total number of duplicates: %i' %(dup_count[dup_count > 1].size))
+    print('Total number of non-duplicates: %i' %(dup_count[dup_count == 1].size))
+    
+    con_comp = scipy_graph.connected_components(dup_graph)
+    new_grain_ids = np.unique(con_comp[1])
+    ret_grains_out = np.zeros([con_comp[0], 21])
+    
+    for gid in new_grain_ids:
+        ret_grains_out[gid, :] = np.mean(np.atleast_2d(grains_out[con_comp[1] == gid, :]), axis=0)
+    
+    print('Total number of new grains: %i' %(con_comp[0]))
+    
+    return ret_grains_out
     
 
 # *****************************************************************************

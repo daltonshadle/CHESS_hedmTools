@@ -4,7 +4,7 @@ analysis_name: example  # defaults to analysis
 # all relative paths specified herein are assumed to be in the working_dir
 # any files not in working_dir should be specified with an absolute path
 #
-# working_dir:
+working_dir: /home/djs522/additional_sw/hedmTools/CHESS_hedmTools/Analysis/
 
 # "all", "half", or -1 means all but one, defaults to -1
 multiprocessing: 64

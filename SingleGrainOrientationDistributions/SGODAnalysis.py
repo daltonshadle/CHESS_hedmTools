@@ -329,7 +329,7 @@ def calc_misorient_moments(grain_mis_quat, grain_odf=None, norm_regularizer=0):
     '''
     
     # initialize
-    norm_sigma = norm_gamma = norm_kappa = sigma = gamma = kappa = 0
+    norm_sigma = norm_gamma = norm_kappa = sigma = gamma = kappa = norm_un_gamma = norm_un_kappa = 0
     
     # preprocess
     grain_mis_rod = OrientationTools.quat2rod(grain_mis_quat)
@@ -367,21 +367,23 @@ def calc_misorient_moments(grain_mis_quat, grain_odf=None, norm_regularizer=0):
     
         # compute skewness
         outer_2 = np.einsum('ijk,il->ijkl', outer_1, grain_mis_rod)
-        gamma = ((norm_sigma + norm_regularizer)**(-3/2)
-            * np.sum(np.einsum('i,ijkl->ijkl', grain_odf, outer_2), axis=0))
+        un_gamma = np.sum(np.einsum('i,ijkl->ijkl', grain_odf, outer_2), axis=0)
+        gamma = ((norm_sigma + norm_regularizer)**(-3/2) * un_gamma)
     
         # compute gamma norm for later
         norm_gamma = np.linalg.norm(gamma)
+        norm_un_gamma = np.linalg.norm(un_gamma)
     
         # compute kurtosis
         outer_3 = np.einsum('ijkl,im->ijklm', outer_2, grain_mis_rod)
-        kappa = ((norm_sigma + norm_regularizer)**(-2)
-            * np.sum(np.einsum('i,ijklm->ijklm', grain_odf, outer_3), axis=0))
+        un_kappa = np.sum(np.einsum('i,ijklm->ijklm', grain_odf, outer_3), axis=0)
+        kappa = ((norm_sigma + norm_regularizer)**(-2) * un_kappa)
     
         # compute kappa norm for later
         norm_kappa = np.linalg.norm(kappa)
+        norm_un_kappa = np.linalg.norm(un_kappa)
 
-    return norm_sigma, norm_gamma, norm_kappa, sigma, gamma, kappa
+    return norm_sigma, norm_gamma, norm_kappa, sigma, gamma, kappa, norm_un_gamma, norm_un_kappa
     
     
 def animate_dsgods_rod(grain_rod_list, grain_odf_list=None, labels_list=None, 
@@ -559,7 +561,7 @@ def moments_plotting(col_x, col_y, df, col_k='kind',
             if c is not None:
                 kwargs['c'] = c
             kwargs['alpha'] = scatter_alpha
-            kwargs['s'] = 125
+            kwargs['s'] = 15
             kwargs['marker'] = marker
             plt.scatter(*args, **kwargs)
 
@@ -1036,6 +1038,191 @@ def process_dsgod_file_new(dsgod_npz_dir, comp_thresh=0.85, inten_thresh=0, do_a
                   dsgod_comp_thresh=comp_thresh)
     
     return [grain_quat, grain_mis_quat, grain_odf, grain_mis_ang_deg, grain_avg_quat]
+
+def process_dsgod_file_multi_comp(dsgod_npz_dir, comp_thresh=[0.85], inten_thresh=0, do_avg_ori=True, 
+                        do_conn_comp=True, save=False, connectivity_type=18, quiet=True):
+    '''
+    Purpose: processing raw DSGOD file created from HEDM / VD data
+
+    Parameters
+    ----------
+    dsgod_npz_dir : string
+        path to dsgod .npz file
+    comp_thresh : float, optional
+        completeness threshold for gathering intensity info to construct dsgod.
+        The default is 0.85.
+    inten_thresh : float, optional
+        intensity threshold to construct dsgod, not recommended. 
+        The default is 0.
+    do_avg_ori : bool, optional
+        flag for using average orientation to identify reference orientaiton 
+        cloud if there are multiple clouds in the raw DSGOD file. 
+        The default is True.
+    do_conn_comp : bool, optional
+        flag for using connected components to identify reference orientation 
+        cloud if there are multiple clouds in the raw DSGOD file. 
+        The default is True.
+    save : bool, optional
+        flag for saving DSGOD results. The default is False.
+    connectivity_type : int, optional
+        describes connectivity for connected components, can be 26, 18, and 6. 
+        The default is 18.
+
+    Returns
+    -------
+    [grain_quat, grain_mis_quat, grain_odf]
+    grain_quat : numpy array (n x 4)
+        list of quaternions in DSGOD
+    grain_mis_quat: numpy array (n x 4)
+        list of misorientation quaternions (when compared to average 
+        orientation) in DSGOD
+    grain_odf: numpy array (n x 1)
+        list of weights for orientations in DSGOD
+
+    '''
+    
+    # load grain data
+    '''
+    np.savez(dsgod_npz_save_dir, dsgod_box_shape=box_shape,
+                  dsgod_avg_expmap=cur_exp_maps,
+                  dsgod_box_comp=dsgod_box_comp, dsgod_box_quat=dsgod_box_quat,
+                  dsgod_box_inten=dsgod_box_inten, dsgod_box_inten_list=dsgod_box_inten_list,
+                  dsgod_box_hit_list=dsgod_box_hit_list, dsgod_box_filter_list=dsgod_box_filter_list)
+    '''
+    
+    grain_goe_info = np.load(dsgod_npz_dir)
+    grain_goe_box = grain_goe_info['dsgod_box_shape']
+    grain_inten_arr = grain_goe_info['dsgod_box_inten_list'].astype(np.int32)
+    grain_filter_arr = grain_goe_info['dsgod_box_filter_list'].astype(np.int8)
+    grain_avg_expmap = grain_goe_info['dsgod_avg_expmap']
+    grain_avg_quat = np.atleast_2d(hexrd_rot.quatOfExpMap(grain_avg_expmap.T)).T
+    misorientation_bnd = grain_goe_info['misorientation_bnd']
+    misorientation_spacing = grain_goe_info['misorientation_spacing']
+    if 'truncate_comp_thresh' in list(grain_goe_info.keys()):
+        truncate_comp_thresh = grain_goe_info['truncate_comp_thresh']
+        if truncate_comp_thresh is None:
+            truncate_comp_thresh = 0
+    else:
+        truncate_comp_thresh = 0
+    
+    # regenerate orientations    
+    mis_amt = np.radians(misorientation_bnd)
+    mis_spacing = np.radians(misorientation_spacing)
+    ori_pts = np.arange(-mis_amt, (mis_amt+(mis_spacing*0.999)), mis_spacing)
+    ori_Xs, ori_Ys, ori_Zs = np.meshgrid(ori_pts, ori_pts, ori_pts)
+    ori_grid = np.vstack([ori_Xs.flatten(), ori_Ys.flatten(), ori_Zs.flatten()]).T
+    grain_exp_maps = ori_grid + grain_avg_expmap
+    
+    # transform orientation to Rodrigues vectors
+    grain_quat = hexrd_rot.quatOfExpMap(grain_exp_maps.T)
+    
+    # TIM WORK ****************************************************************
+    # reverse sort intensities in high -> low order
+    sort_ind = np.argsort(-grain_inten_arr, axis=1)
+    sort_grain_inten_arr = np.take_along_axis(grain_inten_arr, sort_ind, axis=1)
+    
+    # find index of intensity value to use based on completeness thresholding (Tim Long way)
+    sum_filter = np.sum(grain_filter_arr, axis=1)
+    
+    results = []
+    for c_t in comp_thresh:
+        if c_t < truncate_comp_thresh:
+            raise ValueError('Completeness threshold cannot be less than truncated completeness of raw data %0.2f' %(truncate_comp_thresh))
+        comp_filter_ind = ((c_t - truncate_comp_thresh) * sum_filter / (1 - truncate_comp_thresh)).astype(int)
+        
+        # gather intensity values based on index found above
+        grain_inten = sort_grain_inten_arr[np.arange(grain_inten_arr.shape[0]), comp_filter_ind]
+        grain_inten[grain_inten < inten_thresh] = 0
+        
+        if np.any(grain_inten > 0):
+            
+            if do_conn_comp:
+                # CONN COMP WORK ***********************************************************
+                
+                conn_comp_inten = np.reshape(grain_inten, grain_goe_box)
+                conn_comp_map = cc3d.connected_components(conn_comp_inten > inten_thresh, connectivity=connectivity_type)
+                
+                if do_avg_ori:
+                    # find nearest non-zero intenisty closest to avg orient as DSGOD group
+                    nnz_inten_quats = grain_quat[:, grain_inten > inten_thresh]
+                    
+                    grain_avg_quat_norms = np.linalg.norm(nnz_inten_quats - grain_avg_quat, axis=0)
+                    avg_ori_quat = np.atleast_2d(nnz_inten_quats[:, np.where(grain_avg_quat_norms == np.min(grain_avg_quat_norms))[0]][:, 0]).T
+                    avg_ori_ind = np.where((grain_quat == avg_ori_quat).all(axis=0))[0]
+                    
+                    # reshape conn comp to find center group number
+                    group_num = np.reshape(conn_comp_map, [conn_comp_inten.size])[avg_ori_ind]
+                else:
+                    # find max count as GOE group
+                    # find unique groups and counts
+                    conn_comp_uni, conn_comp_count = np.unique(conn_comp_map, return_counts=True)
+                    # remove 0 from list
+                    conn_comp_count = conn_comp_count[(conn_comp_uni != 0)]
+                    conn_comp_uni = conn_comp_uni[(conn_comp_uni != 0)]
+                    # find the group number with max count and filter
+                    group_num = conn_comp_uni[conn_comp_count == np.max(conn_comp_count)]
+                
+                # remap values not in group to 0 adn values in group to 1
+                conn_comp_map[conn_comp_map != group_num] = 0
+                conn_comp_map[conn_comp_map == group_num] = 1
+                
+                # set all intensities not in group to 0 and reshape
+                conn_comp_inten[np.logical_not(conn_comp_map)] = 0
+                thresh_grain_inten = np.reshape(conn_comp_inten, [conn_comp_inten.size])
+            else:
+                thresh_grain_inten = grain_inten
+                
+            
+            # DSGOD WORK **************************************************************
+            sum_grain_inten = np.sum(thresh_grain_inten)
+            #print(sum_grain_inten)
+            
+            if sum_grain_inten > 0:
+                grain_odf = thresh_grain_inten / sum_grain_inten.astype(float)
+                
+                if not quiet:
+                    print("Number of Diffraction Events: %i" %(grain_inten_arr.shape[1] + sum_filter.mean()))
+                    print('Max inten = %f, Min inten = %f' %(np.max(thresh_grain_inten), np.min(thresh_grain_inten)))
+                    #print('Max ODF = %f, Min ODF = %f' %(np.max(grain_odf)*100, np.min(grain_odf)*100))
+                
+                grain_avg_quat = np.atleast_2d(np.average(grain_quat, axis=1, weights=grain_odf)).T
+                
+                # MISOREINTATION WORK *****************************************************
+                [grain_mis_ang_deg, grain_mis_quat] = OrientationTools.calc_misorientation_quat(grain_avg_quat, grain_quat)
+            else:
+                if not quiet:
+                    print('1. Using avg quat')
+                grain_quat = grain_avg_quat
+                grain_odf = np.ones(grain_quat.shape[1])
+                grain_mis_quat = np.zeros(grain_quat.shape)
+                grain_mis_quat[0] = 1
+                grain_mis_ang_deg = np.array([0])
+                sum_grain_inten = 1
+        else:
+            if not quiet:
+                print('2. Using avg quat')
+            grain_quat = grain_avg_quat
+            grain_odf = np.ones(grain_quat.shape[1])
+            grain_mis_quat = np.zeros(grain_quat.shape)
+            grain_mis_quat[0] = 1
+            grain_mis_ang_deg = np.array([0])
+            sum_grain_inten = 0
+            
+        # RETURN ******************************************************************
+        if save:
+            dsgod_npz_save_dir = dsgod_npz_dir.split('.npz')[0]
+            grain_quat = grain_quat[:, grain_odf > 0].T
+            grain_mis_quat = grain_mis_quat[:, grain_odf > 0].T
+            grain_odf = grain_odf[grain_odf > 0]
+            
+            comp_str = str(c_t).replace('.', '_')
+            np.savez(dsgod_npz_save_dir + '_%s_reduced' %(comp_str), dsgod_box_shape=grain_goe_box,
+                      dsgod_avg_expmap=grain_avg_expmap, dsgod_avg_quat=grain_avg_quat,
+                      dsgod_box_quat=grain_quat, dsgod_box_mis_quat=grain_mis_quat,
+                      dsgod_box_dsgod=grain_odf, dsgod_sum_inten=sum_grain_inten,
+                      dsgod_comp_thresh=c_t)
+        results.append([grain_quat, grain_mis_quat, grain_odf, grain_mis_ang_deg, grain_avg_quat])
+    return results
 
 # def process_dsgod_file_inv(dsgod_npz_dir, scan=24, compl_thresh=0.85, reg_lambda=None,
 #                                do_conn_comp=False, do_avg_ori=False, connectivity_type=18,
