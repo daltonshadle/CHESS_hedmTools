@@ -158,7 +158,7 @@ def plot_grain_dsgod(grain_rod, grain_odf=None, reverse_map=False,
         vmin = np.mean(density) / 10
         vmax = np.max(density)
         
-        lim_step = 0.02
+        lim_step = 0.01
         c_norm = plt_colors.Normalize(vmin=vmin, vmax=vmax)
         if reverse_map:
             c_norm = plt_colors.Normalize(vmin=-vmax, vmax=-vmin)
@@ -1026,15 +1026,17 @@ def process_dsgod_file_new(dsgod_npz_dir, comp_thresh=0.85, inten_thresh=0, do_a
         #           dsgod_avg_expmap=grain_avg_expmap, dsgod_avg_quat=grain_avg_quat,
         #           dsgod_box_quat=grain_quat, dsgod_box_mis_quat=grain_mis_quat,
         #           dsgod_box_dsgod=grain_odf, dsgod_comp_thresh=comp_thresh)
-        grain_quat = grain_quat[:, grain_odf > 0].T
-        grain_mis_quat = grain_mis_quat[:, grain_odf > 0].T
-        grain_odf = grain_odf[grain_odf > 0]
+        
+        
+        save_grain_quat = np.copy(grain_quat)[:, grain_odf > 0].T
+        save_grain_mis_quat = np.copy(grain_mis_quat)[:, grain_odf > 0].T
+        save_grain_odf = np.copy(grain_odf)[grain_odf > 0]
         
         comp_str = str(comp_thresh).replace('.', '_')
         np.savez(dsgod_npz_save_dir + '_%s_reduced' %(comp_str), dsgod_box_shape=grain_goe_box,
                   dsgod_avg_expmap=grain_avg_expmap, dsgod_avg_quat=grain_avg_quat,
-                  dsgod_box_quat=grain_quat, dsgod_box_mis_quat=grain_mis_quat,
-                  dsgod_box_dsgod=grain_odf, dsgod_sum_inten=sum_grain_inten,
+                  dsgod_box_quat=save_grain_quat, dsgod_box_mis_quat=save_grain_mis_quat,
+                  dsgod_box_dsgod=save_grain_odf, dsgod_sum_inten=sum_grain_inten,
                   dsgod_comp_thresh=comp_thresh)
     
     return [grain_quat, grain_mis_quat, grain_odf, grain_mis_ang_deg, grain_avg_quat]

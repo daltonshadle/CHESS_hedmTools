@@ -9,6 +9,7 @@ import numpy as np
 
 from hexrd import config
 from hexrd import instrument
+from hexrd.instrument import hedm_instrument
 from hexrd import rotations
 from hexrd import constants
 
@@ -18,7 +19,6 @@ from hexrd.transforms.xfcapi import \
     detectorXYToGvec, \
     gvecToDetectorXY, \
     anglesToDVec, \
-    makeGVector, \
     makeOscillRotMatArray, \
     makeEtaFrameRotMat
 
@@ -170,7 +170,7 @@ for igrain, grain_id in enumerate(grain_mat_ids):
         # sim_results[panel_id][item_key][grain][reflection]
         
         # pull out the OmegaImageSeries for this panel from input dict
-        ome_imgser = instrument._parse_imgser_dict(ims_dict,
+        ome_imgser = hedm_instrument._parse_imgser_dict(ims_dict,
                                                     detector_id,
                                                     roi=panel.roi)
         

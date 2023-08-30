@@ -55,9 +55,9 @@ c44 = 109.6e3 # #MPa
 # c11 = 260e3 #MPa
 # c12 = 177e3 #MPa
 # c44 = 107e3 #MPa
-c11 = 232e3
-c12 = 108e3
-c44 = 88e3
+# c11 = 232e3
+# c12 = 108e3
+# c44 = 88e3
 INCONEL_718_SX_STIFF = np.array([[c11, c12, c12,   0,   0,   0], 
                                  [c12, c11, c12,   0,   0,   0], 
                                  [c12, c12, c11,   0,   0,   0],
@@ -66,9 +66,18 @@ INCONEL_718_SX_STIFF = np.array([[c11, c12, c12,   0,   0,   0],
                                  [  0,   0,   0,   0,   0, c44]])
 
 INCONEL_718_E = 199e9 # found from DIC measurements in elastic regime, averaged over 75 points
-INCONEL_718_nu = 0.2785 #0.2785 # found from DIC measurements in the elastic regime, averaged over 75 points, 0.321
+INCONEL_718_nu = 0.338 #0.2785 # found from DIC measurements in the elastic regime, averaged over 75 points, 0.321
 INCONEL_718DP_Yield = 940e6 # macroscopic yield around this value
 INCONEL_718_SCHMID_TENSOR_LIST = [np.load(os.path.join(analysis_path, 'example_grains_out/inconel_718_schmid_tensors.npy'))]
+
+slip_plane_normals = np.array([[1, 1, 1], [1, 1, 1], [1, 1, 1],
+                               [1, -1, 1], [1, -1, 1], [1, -1, 1],
+                               [1, -1, -1], [1, -1, -1], [1, -1, -1],
+                               [1, 1, -1], [1, 1, -1], [1, 1, -1]])
+slip_direction = np.array([[1, -1, 0], [1, 0, -1], [0, 1, -1],
+                               [1, 1, 0], [1, 0, -1], [0, 1, 1],
+                               [1, 1, 0], [1, 0, 1], [0, 1, -1],
+                               [1, 0, 1], [1, 1, 0], [0, 1, 1]])
 
 # *****************************************************************************
 # FUNCTION DECLARATION AND IMPLEMENTATION
@@ -459,6 +468,7 @@ def post_process_stress(grain_data, SX_STIFF=INCONEL_718_SX_STIFF,
         # grab exp map and convert strain vec to true strain vec for grain i
         gr_exp_map = np.atleast_2d(grain_data[i, 3:6]).T
         gr_strain_samp_v = np.atleast_2d(grain_data[i, 15:21]).T
+        gr_strain_samp_v[:, 3:] = gr_strain_samp_v[:, 3:] * 2 # MUST BE TIMES 2 AS GRAINS.OUT ONLY HAS TENSOR COMPONENT NOT VOIGT COMPONENT
         
         # get the crys -> samp rotation as matrix for grain i
         gr_rot_mat = hexrd_rot.rotMatOfExpMap_opt(gr_exp_map)
@@ -582,7 +592,6 @@ def post_process_stress_old(grain_data, SX_STIFF=INCONEL_718_SX_STIFF, schmid_T_
     
         expMap=np.atleast_2d(grain_data[jj,3:6]).T    
         strainTmp=np.atleast_2d(grain_data[jj,15:21]).T
-        strainTmp[3:6] /= 2
         
         #Turn exponential map into an orientation matrix
         Rsc=hexrd_rot.rotMatOfExpMap(expMap)
@@ -699,9 +708,8 @@ def gen_schmid_tensors_from_pd(pd, uvw, hkl):
     
     # slip plane plane normals
     n_plane = hexrd_mat.unitVector( np.dot( pd.latVecOps['B'], hkl ) )
-    n_plane_sym = hexrd_rot.applySym(n_plane, pd.getQSym(), csFlag=False, cullPM=True, tol=1e-08)
+    n_plane_sym = hexrd_rot.applySym(n_plane, pd.getQSym(), csFlag=False, cullPM=True, tol=1e-08)  
 
-    
     num_slip_plane= n_plane_sym.shape[1]
     
     num_slip_sys=0
@@ -716,11 +724,42 @@ def gen_schmid_tensors_from_pd(pd, uvw, hkl):
         planeID = np.where(abs(np.dot(n_plane_sym[:, i],slipdir_sym)) < 1.e-8)[0]
         for j in np.arange(planeID.shape[0]):    
             T[counter, :, :] = np.dot(slipdir_sym[:, planeID[j]].reshape(3, 1), n_plane_sym[:, i].reshape(1, 3))
+            print(counter+1)
+            print(np.hstack([n_plane_sym[:, i].reshape(1, 3).T, slipdir_sym[:, planeID[j]].reshape(3, 1)]))
             counter+=1
     #Clean some round off errors        
     round_off_err=np.where(abs(T)<1e-8)
     T[round_off_err[0],round_off_err[1],round_off_err[2]]=0.
 
+    return T
+
+def gen_schmid_boas_tensors_fcc():
+    
+    slip_plane_normals = np.array([[-1, 1, 1], [-1, 1, 1], [-1, 1, 1],
+                                   [1, 1, 1], [1, 1, 1], [1, 1, 1],
+                                   [-1, -1, 1], [-1, -1, 1], [-1, -1, 1],
+                                   [1, -1, 1], [1, -1, 1], [1, -1, 1]])
+    slip_direction = np.array([[0, -1, 1], [1, 0, 1], [1, 1, 0],
+                                   [0, -1, 1], [-1, 0, 1], [-1, 1, 0],
+                                   [0, 1, 1], [1, 0, 1], [-1, 1, 0],
+                                   [0, 1, 1], [-1, 0, 1], [1, 1, 0]])
+    
+    print(slip_plane_normals)
+    print()
+    print(slip_direction)
+    
+    num_slip_sys = slip_plane_normals.shape[0]
+    num_slip_plane = slip_plane_normals.shape[0]
+    
+    T = np.zeros((num_slip_sys, 3, 3))
+    counter=0
+    for i in range(num_slip_plane):  
+        T[counter, :, :] = np.dot(slip_direction[i, :].reshape(3, 1), slip_plane_normals[i, :].reshape(1, 3))
+        counter+=1
+    #Clean some round off errors        
+    round_off_err=np.where(abs(T)<1e-8)
+    T[round_off_err[0],round_off_err[1],round_off_err[2]]=0.
+    
     return T
 
 def plot_principal_stress_jacks(stress_v):
@@ -1126,7 +1165,7 @@ def extract_strength_for_all_slip_systems(grain_data_list,
     for i, schmid_tensors in enumerate(schmid_tensor_list):
         stress_data = [None]*(num_load_steps)
         for j in np.arange(num_load_steps):
-            print('Processing Load Step %i' %(j+1))   
+            #print('Processing Load Step %i' %(j+1))   
             stress_data[j] = post_process_stress(grain_data_list[j], 
                                                  SX_STIFF=INCONEL_718_SX_STIFF, 
                                                  schmid_T_list=schmid_tensors)
@@ -1158,7 +1197,8 @@ def extract_strength(stress_data):
     w_tau = np.zeros(num_load_steps)    
     
     for i in np.arange(num_load_steps):
-        max_rss = np.max(stress_data[i]['RSS'], axis=1) # TODO: should this be absolute value of rss?
+        #max_rss = np.max(stress_data[i]['RSS'], axis=1) # TODO: should this be absolute value of rss?
+        max_rss = np.max(np.abs(stress_data[i]['RSS']), axis=1) # TODO: should this be absolute value of rss?
     
         tau = np.linspace(0., 1.5*np.max(max_rss), num=2000)     
 
@@ -1195,12 +1235,14 @@ def plot_strength_curve(tau_star, w_tau, macro_strain=None, plot_color='blue'):
     #
     
     if macro_strain is None:
-        macro_strain=np.arange(len(tau_star))
+        macro_strain=np.arange(tau_star[0].size)
     
     plt.figure()
     tau_star = np.array(tau_star).flatten()
     macro_strain = np.array(macro_strain).flatten()
     strain_fine = np.linspace(macro_strain[0], macro_strain[-1], 100) 
+    
+    print(tau_star.shape, macro_strain.shape, strain_fine.shape)
     
     interp_tau_star = interp1d(macro_strain, tau_star)(strain_fine).flatten()
     interp_w_tau = interp1d(macro_strain, w_tau)(strain_fine).flatten()
@@ -1283,8 +1325,11 @@ if __name__ == '__main__':
     if test_schmid_tesnors:
         cfg = os.path.join(analysis_path, 'example_ff_config.yml')
         schmid_tensors = gen_schmid_tensors_from_cfg(cfg, np.array([[1, 1, 0]]).T, np.array([[1, 1, 1]]).T)
+        #schmid_tensors = gen_schmid_tensors_from_cfg(cfg, np.array([[1, 0, 1]]).T, np.array([[1, -1, 1]]).T)
+        
+        schmid_tensors_sb_notation = gen_schmid_boas_tensors_fcc()
     
-    test_strength_extract = True
+    test_strength_extract = False
     if test_strength_extract:
         tau_star_list, w_tau_list = extract_strength_for_all_slip_systems(grain_mat_list, 
                                               schmid_tensor_list=INCONEL_718_SCHMID_TENSOR_LIST,
@@ -1292,7 +1337,7 @@ if __name__ == '__main__':
         plot_strength_curve(tau_star_list, w_tau_list, macro_strain=macro_strain, plot_color='blue')
     
     # test stress calc and stiffness calc
-    test_stress_and_stiffness_calc = True
+    test_stress_and_stiffness_calc = False
     if test_stress_and_stiffness_calc:
         step = 3
         grain_mat = np.copy(grain_mat_list[step])

@@ -709,6 +709,85 @@ def quat2exp_map(quat):
     
     return exp_map
 
+def BungeOfRMat(rmat, units):
+    '''
+    % BungeOfRMat - Bunge angles from rotation matrices.
+    %   
+    %   USAGE:
+    %
+    %   bunge = BungeOfRMat(rmat, units)
+    %
+    %   INPUT:
+    %
+    %   rmat  is 3 x 3 x n,  change to n x 3 x 3
+    %         an array of rotation matrices
+    %   units is a string,
+    %         either 'degrees' or 'radians' specifying the output
+    %         angle units
+    %
+    %   OUTPUT:
+    %
+    %   bunge is n x 3,
+    %         the array of Euler angles using Bunge convention
+    %
+    '''
+    if (units == 'degrees'):
+        indeg = True
+    elif (units == 'radians'):
+        indeg = False
+    else:
+        raise ValueError('angle units need to be specified:  degrees or radians')
+      
+    #n  = size(rmat, 3);
+    n = rmat.shape[0]
+    
+    #c2 = rmat(3, 3, :);
+    c2 = rmat[:, 2, 2]
+    #c2 = min(c2(:), 1.0);
+    c2[c2 > 1.0] = 1.0
+    #c2 = max(c2', -1.0);
+    c2[c2 < -1.0] = -1.0
+    
+    #myeps         = sqrt(eps);  %  for arc-cosine
+    myeps = np.sqrt(np.finfo(float).eps)
+    #near_pole     = (abs(c2) > 1-myeps);
+    near_pole     = (np.abs(c2) > 1-myeps)
+    
+    # %  Not near pole.
+    #s2 = sqrt(1 - c2.*c2);
+    s2 = np.sqrt(1 - c2**2)
+    
+    # c1 = -squeeze(rmat(2, 3, :))' ./s2; % squeeze makes column vector here
+    # s1 =  squeeze(rmat(1, 3, :))' ./s2;
+    # c3 =  squeeze(rmat(3, 2, :))' ./s2;
+    # s3 =  squeeze(rmat(3, 1, :))' ./s2;
+    c1 = -np.squeeze(rmat[:, 1, 2]).T /s2
+    s1 =  np.squeeze(rmat[:, 0, 2]).T /s2
+    c3 =  np.squeeze(rmat[:, 2, 1]).T /s2
+    s3 =  np.squeeze(rmat[:, 2, 0]).T /s2
+    
+    # %  Near pole.
+    # c1(near_pole) = squeeze(rmat(1, 1, near_pole))';
+    # s1(near_pole) = squeeze(rmat(2, 1, near_pole))';
+    # c3(near_pole) = 1;
+    # s3(near_pole) = 0;
+    
+    c1[near_pole] = np.squeeze(rmat[near_pole, 0, 0]).T
+    s1[near_pole] = np.squeeze(rmat[near_pole, 1, 0]).T
+    c3[near_pole] = 1
+    s3[near_pole] = 0
+    
+    # bunge = [atan2(s1, c1); acos(c2); atan2(s3, c3)];
+    # bunge(bunge < 0) = bunge(bunge < 0) + 2*pi;
+    
+    bunge = np.vstack([np.arctan2(s1, c1), np.arccos(c2), np.arctan2(s3, c3)]).T
+    bunge[bunge < 0] = bunge[bunge < 0] + 2*np.pi
+    
+    if indeg:
+        bunge = bunge * (180.0/np.pi)
+    
+    return bunge
+
 def discretizeFundamentalRegion(phi1_bnd=[0, 180], phi1_step=1,
                                 theta_bnd=[0, 90], theta_step=1,
                                 phi2_bnd=[0, 180], phi2_step=1,
@@ -1029,6 +1108,40 @@ def plot_eta_ome_maps(eta_ome_dir, vmin=None, vmax=None, show_hkl_list=None):
         ax.axis('tight')
         plt.draw()
     return 0
+
+def get_dsgod_boundary_counts(dsgod_reduced_npz, misorientation_bnd=1.25, misorientation_spacing=0.1, nearness_thresh=1e-7):
+    dsgod = np.load(dsgod_reduced_npz)
+    expmap = dsgod['dsgod_avg_expmap']
+    quats = dsgod['dsgod_box_quat']
+    rods = quat2rod(quats)
+    
+     # regenerate orientations    
+    mis_amt = np.radians(misorientation_bnd)
+    mis_spacing = np.radians(misorientation_spacing)
+    ori_pts = np.arange(-mis_amt, (mis_amt+(mis_spacing*0.999)), mis_spacing)
+    ori_Xs, ori_Ys, ori_Zs = np.meshgrid(ori_pts, ori_pts, ori_pts)
+    ori_grid = np.vstack([ori_Xs.flatten(), ori_Ys.flatten(), ori_Zs.flatten()]).T
+    grain_exp_maps = ori_grid + expmap
+    
+    # transform orientation to Rodrigues vectors
+    grain_quat = hexrd_rot.quatOfExpMap(grain_exp_maps.T)
+    grain_rod = quat2rod(grain_quat.T)
+    
+    grain_rod = grain_rod.reshape(list(ori_Xs.shape) + [3])
+    
+    extremities_rod = np.vstack([grain_rod[0, :, :, :], grain_rod[ori_Xs.shape[0]-1, :, :, :],
+                                 grain_rod[:, 0, :, :], grain_rod[:, ori_Xs.shape[1]-1, :, :],
+                                 grain_rod[:, :, 0, :], grain_rod[:, :, ori_Xs.shape[2]-1, :]])
+    extremities_rod = extremities_rod.reshape([extremities_rod.shape[0] * extremities_rod.shape[1], extremities_rod.shape[2]])
+    
+    boundary_nearness = []
+    for rod in rods:
+        boundary_nearness.append(np.min(np.linalg.norm(extremities_rod - rod, axis=1)))
+    boundary_nearness = np.array(boundary_nearness) 
+    
+    boundary_counts = np.sum(boundary_nearness < nearness_thresh)
+    
+    return boundary_counts
 
 if __name__ == "__main__": 
     
